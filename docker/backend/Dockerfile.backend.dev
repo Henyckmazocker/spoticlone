@@ -1,0 +1,43 @@
+# spoticlone PHP backend (development)
+FROM php:8.2-apache
+
+WORKDIR /var/www/html
+
+# El worker de Apache corre como uid/gid 1000 (= dueño de /music y /downloads en el host),
+# para poder mover descargas de Soulseek a la biblioteca. gid 1000 está libre en php:apache.
+RUN groupmod -g 1000 www-data && usermod -u 1000 www-data
+
+# System deps + PHP extensions. PhpSpreadsheet needs gd, zip, mbstring, xml(bundled).
+RUN apt-get update && apt-get install -y \
+        libzip-dev zip unzip \
+        libpng-dev libjpeg62-turbo-dev libwebp-dev \
+        libonig-dev \
+        libxml2-dev \
+        git curl nano \
+    && docker-php-ext-configure gd --with-jpeg --with-webp \
+    && docker-php-ext-install pdo pdo_mysql zip gd mbstring \
+    && pecl install xdebug \
+    && docker-php-ext-enable xdebug \
+    && rm -rf /var/lib/apt/lists/*
+
+# Composer
+RUN curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer
+
+# Apache: rewrite/headers + serve from public/
+RUN a2enmod rewrite headers
+RUN sed -i 's|/var/www/html|/var/www/html/public|g' /etc/apache2/sites-available/000-default.conf \
+    && sed -i 's|/var/www/html|/var/www/html/public|g' /etc/apache2/apache2.conf
+
+RUN mkdir -p /var/www/html/storage/logs \
+    && mkdir -p /var/www/html/storage/cache \
+    && mkdir -p /var/www/html/storage/sessions \
+    && mkdir -p /var/www/html/storage/uploads \
+    && chown -R www-data:www-data /var/www/html
+
+EXPOSE 80
+
+ENV PHP_DISPLAY_ERRORS=On
+ENV PHP_ERROR_REPORTING=E_ALL
+ENV PHP_MEMORY_LIMIT=512M
+
+CMD ["apache2-foreground"]

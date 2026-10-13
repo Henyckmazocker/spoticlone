@@ -1,0 +1,15 @@
+# No arrastrar artefactos/locales al build de las imágenes (sobre todo el backend.prod,
+# que hace COPY backend/ y se llevaba los logs y el .env de dev a la imagen).
+backend/vendor
+backend/.env
+backend/.env.docker-development
+backend/storage/logs/*
+backend/storage/cache/*
+backend/storage/sessions/*
+backend/storage/covers/*
+backend/storage/uploads/*
+!backend/storage/**/.gitkeep
+
+frontend/node_modules
+frontend/dist
+frontend/android

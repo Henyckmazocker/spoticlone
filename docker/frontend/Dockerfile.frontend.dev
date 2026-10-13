@@ -1,0 +1,15 @@
+# statCoin Vue frontend (development)
+FROM node:18-alpine
+
+WORKDIR /app
+
+COPY frontend/package*.json ./
+
+# --legacy-peer-deps: capacitor-google-auth declares an older @capacitor/core peer range.
+RUN npm install --legacy-peer-deps
+
+COPY frontend/ .
+
+EXPOSE 8080
+
+CMD ["npm", "run", "serve", "--", "--host", "0.0.0.0"]

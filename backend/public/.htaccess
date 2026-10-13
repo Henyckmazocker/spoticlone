@@ -1,0 +1,27 @@
+RewriteEngine On
+
+# Pass Authorization header to PHP (Apache may strip it otherwise)
+RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
+
+# Handle preflight OPTIONS requests first
+RewriteCond %{REQUEST_METHOD} OPTIONS
+RewriteRule ^(.*)$ - [R=200,L]
+
+# CORS headers - Dynamic origin handling for localhost and Capacitor (mobile)
+SetEnvIf Origin "^http(s)?://(127\.0\.0\.1|localhost)(:[0-9]+)?$" AccessControlAllowOrigin=$0
+SetEnvIf Origin "^capacitor://localhost$" AccessControlAllowOrigin=$0
+Header always set Access-Control-Allow-Origin "%{AccessControlAllowOrigin}e" env=AccessControlAllowOrigin
+Header always set Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS"
+Header always set Access-Control-Allow-Headers "Content-Type, Authorization, X-CSRF-Token, X-Requested-With, Accept, Origin"
+Header always set Access-Control-Allow-Credentials "true"
+Header always set Access-Control-Max-Age "86400"
+
+# Handle Angular and Vue.js routing
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^(.*)$ index.php [QSA,L]
+
+# Security headers
+Header always set X-Content-Type-Options nosniff
+Header always set X-Frame-Options SAMEORIGIN
+Header always set X-XSS-Protection "1; mode=block"

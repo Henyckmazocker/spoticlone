@@ -1,0 +1,49 @@
+# spoticlone PHP backend (producción). Sin xdebug, sin display_errors, composer --no-dev.
+FROM php:8.2-apache
+
+WORKDIR /var/www/html
+
+# El worker de Apache corre como uid/gid 1000 (= dueño de /music y /downloads en el host),
+# para poder mover descargas de Soulseek a la biblioteca. gid 1000 está libre en php:apache.
+RUN groupmod -g 1000 www-data && usermod -u 1000 www-data
+
+# Deps de sistema + extensiones PHP. getID3 es PHP puro; gd/zip/mbstring se mantienen por si
+# se procesan carátulas y para utf8mb4. pdo_mysql es imprescindible.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        libzip-dev zip unzip \
+        libpng-dev libjpeg62-turbo-dev libwebp-dev \
+        libonig-dev \
+        git \
+    && docker-php-ext-configure gd --with-jpeg --with-webp \
+    && docker-php-ext-install -j$(nproc) pdo pdo_mysql zip gd mbstring \
+    && apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+
+# Composer
+COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
+
+# Apache: rewrite/headers + servir desde public/
+RUN a2enmod rewrite headers \
+    && sed -i 's|/var/www/html|/var/www/html/public|g' /etc/apache2/sites-available/000-default.conf \
+    && sed -i 's|/var/www/html|/var/www/html/public|g' /etc/apache2/apache2.conf
+
+# Código de la app + dependencias de producción
+COPY backend/ /var/www/html/
+RUN composer install --no-dev --optimize-autoloader --no-interaction --prefer-dist
+
+# Directorios de storage
+RUN mkdir -p storage/logs storage/cache storage/sessions storage/uploads \
+    && chown -R www-data:www-data /var/www/html \
+    && chmod -R 775 storage/
+
+# PHP producción
+RUN { \
+        echo "display_errors = Off"; \
+        echo "log_errors = On"; \
+        echo "error_log = /var/www/html/storage/logs/php_errors.log"; \
+        echo "memory_limit = 256M"; \
+        echo "upload_max_filesize = 10M"; \
+        echo "post_max_size = 10M"; \
+    } > /usr/local/etc/php/conf.d/spoticlone-prod.ini
+
+EXPOSE 80
+CMD ["apache2-foreground"]

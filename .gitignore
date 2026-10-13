@@ -1,0 +1,37 @@
+.env
+backend/.env
+backend/vendor/
+backend/storage/logs/*
+backend/storage/cache/*
+backend/storage/sessions/*
+!backend/storage/**/.gitkeep
+frontend/node_modules/
+frontend/dist/
+frontend/android/app/build/
+frontend/android/app/src/main/res/values/secrets.xml
+*.log
+.DS_Store
+
+# Datos generados en runtime (carátulas de la biblioteca real, caché de Last.fm, subidas)
+backend/storage/covers/*
+backend/storage/uploads/*
+!backend/storage/**/.gitkeep
+backend/.phpunit.cache/
+
+# Variantes locales de env
+.env.*
+!.env.example
+!backend/.env.docker-development
+!frontend/.env.production
+frontend/.env.local
+frontend/.env.*.local
+
+# Firma Android / servicios
+*.jks
+*.keystore
+google-services.json
+
+# Editores
+.idea/
+!frontend/android/.idea/
+.vscode/

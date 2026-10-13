@@ -1,0 +1,103 @@
+services:
+  frontend:
+    build:
+      context: .
+      dockerfile: docker/frontend/Dockerfile.frontend.dev
+    ports:
+      - "8086:8080"
+    volumes:
+      - ./frontend/src:/app/src
+      - ./frontend/public:/app/public
+      - ./frontend/babel.config.js:/app/babel.config.js
+      - ./frontend/jsconfig.json:/app/jsconfig.json
+      - ./frontend/vue.config.js:/app/vue.config.js
+    environment:
+      - NODE_ENV=development
+      - VUE_APP_API_URL=/api
+      - VUE_APP_GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: .
+      dockerfile: docker/backend/Dockerfile.backend.dev
+    ports:
+      - "8892:80"
+    volumes:
+      - ./backend:/var/www/html
+      - backend_vendor:/var/www/html/vendor
+      # Música del host en LECTURA-ESCRITURA (necesario para importar descargas de Soulseek).
+      - ${MUSIC_LIBRARY_PATH}:/music
+      # Carpeta de descargas de slskd (para mover lo descargado a la biblioteca).
+      - ${DOWNLOADS_PATH:-/media/david/Elements2/downloads}:/downloads
+    environment:
+      - APP_ENV=development
+      - APP_DEBUG=true
+      - DB_HOST=mysql
+      - DB_PORT=3306
+      - DB_DATABASE=spoticlone_db
+      - DB_USERNAME=spoticlone_user
+      - DB_PASSWORD=${DB_PASSWORD}
+      - LOG_PATH=/var/www/html/storage/logs
+      - JWT_SECRET=${JWT_SECRET}
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
+      - ALLOWED_EMAILS=${ALLOWED_EMAILS:-}
+      - MUSIC_ROOT=/music
+      - COVERS_PATH=/var/www/html/storage/covers
+      - STREAM_URL_TTL=${STREAM_URL_TTL:-3600}
+      - PUBLIC_BASE_URL=http://localhost:8892
+      - EXTERNAL_URL_MAX_TTL=${EXTERNAL_URL_MAX_TTL:-86400}
+      - LASTFM_API_KEY=${LASTFM_API_KEY:-}
+      - SPOTIFY_CLIENT_ID=${SPOTIFY_CLIENT_ID:-}
+      - SPOTIFY_CLIENT_SECRET=${SPOTIFY_CLIENT_SECRET:-}
+      - SLSKD_URL=${SLSKD_URL:-http://slskd:5030}
+      - SLSKD_API_KEY=${SLSKD_API_KEY:-}
+      - DOWNLOADS_ROOT=/downloads/slskd
+    networks:
+      - default
+      - mediaserver
+    command: >
+      bash -c "cd /var/www/html &&
+               cp -n .env.docker-development .env || true &&
+               export COMPOSER_MEMORY_LIMIT=-1 &&
+               composer install --optimize-autoloader --no-interaction &&
+               mkdir -p storage/logs storage/cache storage/sessions storage/covers &&
+               chown -R www-data:www-data storage/ &&
+               chmod -R 775 storage/ &&
+               apache2-foreground"
+    depends_on:
+      - mysql
+    restart: unless-stopped
+
+  mysql:
+    image: mysql:8.0
+    # performance_schema reserva ~220 MB al arrancar, dimensionados por
+    # max_connections y table_open_cache, no por el tamaño de la BD ni por el
+    # uso: una instancia ociosa paga lo mismo que una a tope. Apagado aqui
+    # porque esta es la instancia de desarrollo y nadie la perfila; el pico
+    # historico de conexiones es 1. Para volver a diagnosticar, quitar la
+    # linea y recrear el contenedor.
+    command:
+      - --performance-schema=OFF
+    ports:
+      - "3311:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: spoticlone_db
+      MYSQL_USER: spoticlone_user
+      MYSQL_PASSWORD: ${DB_PASSWORD}
+    restart: always
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./docker/database/init.sql:/docker-entrypoint-initdb.d/init.sql
+
+volumes:
+  mysql_data:
+  backend_vendor:
+
+networks:
+  # Red del stack mediaserver donde vive slskd; permite resolver http://slskd:5030.
+  mediaserver:
+    external: true

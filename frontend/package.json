@@ -1,0 +1,38 @@
+{
+  "name": "spoticlone-frontend",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "serve": "vue-cli-service serve",
+    "build": "vue-cli-service build",
+    "build:mobile": "cross-env VUE_APP_MODE=mobile CAP_ENV=production vue-cli-service build && cross-env CAP_ENV=production npx cap sync android",
+    "cap:sync": "npx cap sync",
+    "cap:sync:mobile": "cross-env CAP_ENV=production npx cap sync android",
+    "cap:android": "npx cap open android"
+  },
+  "dependencies": {
+    "@capacitor/core": "^6.1.0",
+    "@codetrix-studio/capacitor-google-auth": "^3.4.0-rc.4",
+    "@jofr/capacitor-media-session": "^4.0.0",
+    "axios": "^1.7.0",
+    "core-js": "^3.38.0",
+    "pinia": "^2.2.0",
+    "vue": "^3.5.0",
+    "vue-router": "^4.4.0",
+    "vuedraggable": "^4.1.0"
+  },
+  "devDependencies": {
+    "@capacitor/android": "^6.1.0",
+    "@capacitor/cli": "^6.1.0",
+    "@vue/cli-service": "~5.0.8",
+    "cross-env": "^7.0.3",
+    "sass": "^1.77.0",
+    "sass-loader": "^14.2.0",
+    "typescript": "^6.0.3"
+  },
+  "browserslist": [
+    "> 1%",
+    "last 2 versions",
+    "not dead"
+  ]
+}
