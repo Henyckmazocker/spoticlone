@@ -132,6 +132,11 @@ class MySqlUserRepository implements UserRepositoryInterface
     /**
      * @inheritDoc
      */
+    public function count(): int
+    {
+        return (int) $this->db->query("SELECT COUNT(*) FROM " . self::TABLE)->fetchColumn();
+    }
+
     public function save(User $user): User
     {
         try {

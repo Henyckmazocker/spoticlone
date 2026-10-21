@@ -13,11 +13,17 @@ use InvalidArgumentException;
 
 class LoginUserUseCase extends AbstractUseCase
 {
+    /** Default cap on registered users when MAX_USERS is unset. */
+    private const DEFAULT_MAX_USERS = 10;
+
+    private int $maxUsers;
+
     public function __construct(
         private readonly UserRepositoryInterface $userRepository,
         LoggerInterface $logger
     ) {
         parent::__construct($logger);
+        $this->maxUsers = (int) ($_ENV['MAX_USERS'] ?? self::DEFAULT_MAX_USERS);
     }
 
     /**
@@ -55,6 +61,11 @@ class LoginUserUseCase extends AbstractUseCase
             $this->logAuthEvent('login', (string)$existingUser->getId());
             
             return $existingUser;
+        }
+
+        // Registration cap: only new accounts count against MAX_USERS (<= 0 disables it)
+        if ($this->maxUsers > 0 && $this->userRepository->count() >= $this->maxUsers) {
+            throw new UserLimitReachedException('User limit reached.');
         }
 
         // Create new user

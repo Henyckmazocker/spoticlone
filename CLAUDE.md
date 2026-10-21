@@ -55,17 +55,19 @@ docker compose exec backend composer test
 docker compose exec backend vendor/bin/phpunit --filter SignedUrlServiceTest
 ```
 
-**Login en dev sin Google** (JWT para un usuario cuyo email esté en `ALLOWED_EMAILS`; si no, 403):
+**Login en dev sin Google** (JWT para un usuario existente de `users`):
 ```bash
 docker compose exec -T mysql sh -c 'mysql -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" spoticlone_db -e "SELECT id, email FROM users"'
-# elige un id de la lista cuyo email esté en ALLOWED_EMAILS y ponlo en USER_ID:
+# elige un id de la lista y ponlo en USER_ID:
 USER_ID=2
 docker compose exec -T -e USER_ID=$USER_ID backend php -r 'require "/var/www/html/vendor/autoload.php";
   $_ENV["JWT_SECRET"]=getenv("JWT_SECRET");
   echo (new App\Infrastructure\Auth\JWTService())->generate(["user_id"=>(int) getenv("USER_ID")]);'
 ```
 Pégalo en "Acceso de desarrollo" del login, o úsalo como `Authorization: Bearer` con curl. La fila en
-`users` la crea el primer login con Google. **La sesión web** (cookie `SPOTICLONE_SESSION`, con CSRF)
+`users` la crea el primer login con Google. **Registro abierto con tope**: cualquier cuenta de Google
+puede entrar hasta `MAX_USERS` (por defecto 10; `0` = sin límite); a partir de ahí las cuentas **nuevas**
+reciben 403 (`UserLimitReachedException` en `LoginUserUseCase`) y las existentes siguen entrando. **La sesión web** (cookie `SPOTICLONE_SESSION`, con CSRF)
 **solo la crea el login con Google**: con JWT el CSRF se salta (`auth_method=jwt`).
 
 ## Arquitectura (igual patrón que statCoin — leer eso primero ayuda)

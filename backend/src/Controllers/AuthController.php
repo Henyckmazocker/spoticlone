@@ -8,7 +8,7 @@ use App\Infrastructure\Session\SessionManager;
 use App\Infrastructure\Middleware\AuthMiddleware;
 use App\Infrastructure\Auth\GoogleOAuthVerifier;
 use App\Infrastructure\Auth\JWTService;
-use App\Domain\Services\EmailWhitelist;
+use App\Domain\UseCases\Auth\UserLimitReachedException;
 
 class AuthController extends BaseController implements Contracts\AuthControllerInterface
 {
@@ -18,7 +18,6 @@ class AuthController extends BaseController implements Contracts\AuthControllerI
     private AuthMiddleware $authMiddleware;
     private GoogleOAuthVerifier $googleVerifier;
     private JWTService $jwtService;
-    private EmailWhitelist $whitelist;
 
     public function __construct(
         LoginUserUseCase $loginUserUseCase,
@@ -26,8 +25,7 @@ class AuthController extends BaseController implements Contracts\AuthControllerI
         SessionManager $sessionManager,
         AuthMiddleware $authMiddleware,
         GoogleOAuthVerifier $googleVerifier,
-        JWTService $jwtService,
-        EmailWhitelist $whitelist
+        JWTService $jwtService
     ) {
         $this->loginUserUseCase = $loginUserUseCase;
         $this->updateUserProfileUseCase = $updateUserProfileUseCase;
@@ -35,7 +33,6 @@ class AuthController extends BaseController implements Contracts\AuthControllerI
         $this->authMiddleware = $authMiddleware;
         $this->googleVerifier = $googleVerifier;
         $this->jwtService = $jwtService;
-        $this->whitelist = $whitelist;
     }
 
     public function login(array $inputData): array
@@ -47,14 +44,13 @@ class AuthController extends BaseController implements Contracts\AuthControllerI
         // Properly verify Google ID token with cryptographic signature validation
         $payload = $this->googleVerifier->verifyToken($inputData['google_token']);
 
-        // Whitelist gate: only allowed emails may log in (no user/session created otherwise).
-        if (!$this->whitelist->isAllowed($payload['email'] ?? null)) {
-            return $this->errorResponse('Esta cuenta no está autorizada para acceder.', 403);
-        }
-
         // Create login command from verified payload
         $command = \App\Domain\DTO\Commands\LoginUserCommand::fromGoogleToken($payload);
-        $user = $this->loginUserUseCase->execute($command);
+        try {
+            $user = $this->loginUserUseCase->execute($command);
+        } catch (UserLimitReachedException $e) {
+            return $this->errorResponse('Se ha alcanzado el límite de usuarios. No se admiten registros nuevos.', 403);
+        }
         $this->sessionManager->login($user);
         
         $jwtToken = $this->jwtService->generate([

@@ -32,6 +32,11 @@ interface UserRepositoryInterface
     public function findByEmail(Email $email): ?User;
 
     /**
+     * Número total de usuarios registrados (para el tope MAX_USERS)
+     */
+    public function count(): int;
+
+    /**
      * Guarda un nuevo usuario
      */
     public function save(User $user): User;

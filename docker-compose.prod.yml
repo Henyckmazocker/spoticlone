@@ -48,7 +48,7 @@ services:
       - LOG_PATH=/var/www/html/storage/logs
       - JWT_SECRET=${JWT_SECRET}
       - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
-      - ALLOWED_EMAILS=${ALLOWED_EMAILS:-}
+      - MAX_USERS=${MAX_USERS:-10}
       - MUSIC_ROOT=/music
       - COVERS_PATH=/var/www/html/storage/covers
       - STREAM_URL_TTL=${STREAM_URL_TTL:-3600}

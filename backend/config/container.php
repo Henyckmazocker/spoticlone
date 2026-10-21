@@ -96,7 +96,6 @@ return function (): ContainerInterface {
         \App\Domain\Services\LibraryMatcher::class => DI\autowire(),
         \App\Domain\Services\TrackPresenter::class => DI\autowire(),
         \App\Domain\Services\AlbumPresenter::class => DI\autowire(),
-        \App\Domain\Services\EmailWhitelist::class => DI\autowire(),
         \App\Domain\Services\DownloadImporter::class => DI\autowire(),
         \App\Domain\Services\DownloadReconciler::class => DI\autowire(),
         \App\Infrastructure\Music\SpotifyClient::class => DI\autowire(),
