@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia';
 import { apiCall, setCsrfToken, setJwt, getJwt } from '@/services/api';
+import { usePlayerStore } from '@/store/player';
 
 export const useAuthStore = defineStore('auth', {
   state: () => ({
@@ -52,6 +53,12 @@ export const useAuthStore = defineStore('auth', {
 
     async logout() {
       try { await apiCall('logout'); } catch (e) { /* ignore */ }
+      this.clearSession();
+    },
+
+    /** Forget the local session without calling the backend (it already rejected us). */
+    clearSession() {
+      usePlayerStore().stop();
       setJwt(null);
       setCsrfToken(null);
       this.user = null;

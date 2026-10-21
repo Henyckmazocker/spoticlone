@@ -1,5 +1,6 @@
 import { createRouter, createWebHashHistory } from 'vue-router';
 import { useAuthStore } from '@/store/auth';
+import { onUnauthorized } from '@/services/api';
 
 const routes = [
   { path: '/login', name: 'login', component: () => import('@/views/Login.vue'), meta: { public: true } },
@@ -36,6 +37,12 @@ router.beforeEach(async (to) => {
     return { name: 'home' };
   }
   return true;
+});
+
+// Session/JWT expired mid-use: any authenticated call answering 401 sends the user to the login.
+onUnauthorized(() => {
+  useAuthStore().clearSession();
+  if (!router.currentRoute.value.meta.public) router.push({ name: 'login' });
 });
 
 export default router;

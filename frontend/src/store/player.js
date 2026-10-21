@@ -226,21 +226,24 @@ export const usePlayerStore = defineStore('player', () => {
     loadCurrent(true);
   }
 
+  // Parar del todo: cola vacía y <audio> sin fuente (también al cerrar/caducar la sesión).
+  function stop() {
+    queue.value = [];
+    index.value = -1;
+    const a = ensureAudio();
+    a.pause();
+    a.removeAttribute('src');
+    a.load();
+    currentTime.value = 0;
+    duration.value = 0;
+  }
+
   // Quitar una pista de la cola manteniendo coherente el índice/la reproducción.
   function removeAt(i) {
     if (i < 0 || i >= queue.value.length) return;
     const wasCurrent = i === index.value;
     queue.value.splice(i, 1);
-    if (!queue.value.length) {
-      index.value = -1;
-      const a = ensureAudio();
-      a.pause();
-      a.removeAttribute('src');
-      a.load();
-      currentTime.value = 0;
-      duration.value = 0;
-      return;
-    }
+    if (!queue.value.length) return stop();
     if (i < index.value) {
       index.value--;                       // se desplazó todo lo anterior
     } else if (wasCurrent) {
@@ -284,7 +287,7 @@ export const usePlayerStore = defineStore('player', () => {
 
   return {
     queue, index, isPlaying, currentTime, duration, volume, shuffle, repeat, current,
-    setQueueAndPlay, playTrack, enqueue, toggle, play, pause, next, prev, seek,
+    setQueueAndPlay, playTrack, enqueue, toggle, play, pause, stop, next, prev, seek,
     setVolume, toggleShuffle, cycleRepeat, jumpTo, removeAt, move, clearUpcoming, setUpcoming
   };
 });

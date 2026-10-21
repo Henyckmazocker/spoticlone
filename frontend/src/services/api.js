@@ -18,6 +18,12 @@ http.interceptors.request.use((config) => {
   return config;
 });
 
+// A 401 on these is an expected answer (startup probes, failed login), not an expired session.
+const AUTH_ACTIONS = new Set(['login', 'logout', 'check_auth', 'me']);
+let unauthorizedHandler = null;
+/** Register what to do when the session/JWT stops being valid mid-use (router: go to login). */
+export const onUnauthorized = (fn) => { unauthorizedHandler = fn; };
+
 let csrfToken = null;
 export const setCsrfToken = (t) => { csrfToken = t; };
 export const getJwt = () => localStorage.getItem(JWT_KEY);
@@ -51,7 +57,13 @@ export async function apiCall(action, payload = {}) {
   const body = { action, ...payload };
   if (csrfToken) body.csrf_token = csrfToken;
 
-  const { data } = await http.post('', body);
+  let data;
+  try {
+    ({ data } = await http.post('', body));
+  } catch (e) {
+    if (e.response?.status === 401 && !AUTH_ACTIONS.has(action)) unauthorizedHandler?.();
+    throw e;
+  }
   if (data.status !== 'success') {
     const err = new Error(data.message || 'Error en la petición');
     err.response = data;
@@ -60,4 +72,4 @@ export async function apiCall(action, payload = {}) {
   return data.data;
 }
 
-export default { apiCall, setCsrfToken, setJwt, getJwt, resolveUrl };
+export default { apiCall, setCsrfToken, setJwt, getJwt, resolveUrl, onUnauthorized };
