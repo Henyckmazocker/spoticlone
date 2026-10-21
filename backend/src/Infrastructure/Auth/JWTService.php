@@ -21,6 +21,7 @@ class JWTService
     {
         $this->secret = $_ENV['JWT_SECRET']
             ?? throw new \RuntimeException('JWT_SECRET environment variable is required and must not be empty');
+        SecretPolicy::assertStrong($this->secret);
     }
 
     /**

@@ -115,11 +115,24 @@ class Application
         $statusCode = 500;
         
         try {
+            // Solo JSON: un POST text/plain/form cross-site no debe llegar al router (CSRF)
+            $contentType = strtolower((string) ($_SERVER['CONTENT_TYPE'] ?? $_SERVER['HTTP_CONTENT_TYPE'] ?? ''));
+            if (!str_starts_with($contentType, 'application/json')) {
+                $this->sendResponse([
+                    'status' => 'error',
+                    'message' => 'Content-Type must be application/json.',
+                    'data' => null,
+                    'http_code' => 415,
+                ], 415);
+                return;
+            }
+
             // Decode incoming JSON data
-            $inputData = json_decode(file_get_contents('php://input'), true) ?? [];
+            $decoded = json_decode(file_get_contents('php://input'), true);
+            $inputData = is_array($decoded) ? $decoded : [];
             
-            // Determine action
-            $action = $inputData['action'] ?? $_REQUEST['action'] ?? null;
+            // La acción solo viaja en el cuerpo JSON (sin fallback a $_REQUEST)
+            $action = $inputData['action'] ?? null;
             $this->action = is_string($action) ? $action : null;
             
             $result = $this->router->dispatch($action, $inputData);

@@ -60,6 +60,11 @@ class DownloadImporter
         }
 
         $parent = dirname($dest);
+        // Containment BEFORE mkdir: realpath() fails on paths that don't exist yet, so check the
+        // closest ancestor that does. A destination that would escape the library creates nothing.
+        if ($this->resolveInside($this->musicRoot, $this->firstExistingAncestor($parent)) === null) {
+            throw new RuntimeException('Destino fuera de MUSIC_ROOT.');
+        }
         if (!is_dir($parent) && !@mkdir($parent, 0775, true) && !is_dir($parent)) {
             throw new RuntimeException('No se pudo crear la carpeta destino en la biblioteca.');
         }
@@ -72,7 +77,14 @@ class DownloadImporter
         $this->logger?->info('Download imported', ['from' => $src, 'to' => $dest]);
 
         // Only rescan what we just added, not the whole library.
-        $scan = $this->scanner->scan(is_dir($dest) ? $dest : dirname($dest));
+        // The files are already in place: if another scan holds the lock past the wait, the next
+        // full scan picks them up, so log it and report no scan instead of failing the import.
+        try {
+            $scan = $this->scanner->scan(is_dir($dest) ? $dest : dirname($dest));
+        } catch (ScanInProgressException $e) {
+            $this->logger?->warning('Download imported but the follow-up scan was skipped: scan in progress', ['dest' => $dest]);
+            $scan = null;
+        }
         return ['already_imported' => false, 'moved_to' => $dest, 'scan' => $scan];
     }
 
@@ -162,8 +174,13 @@ class DownloadImporter
      */
     private function resolveSource(string $relPath): ?string
     {
-        $direct = $this->resolveInside($this->downloadsRoot, $this->downloadsRoot . '/' . ltrim(str_replace('\\', '/', $relPath), '/'));
-        if ($direct !== null && file_exists($direct)) {
+        // The root itself is never a valid source: discard() would wipe it and import() would move it.
+        $rel = trim(str_replace('\\', '/', $relPath), '/');
+        if ($rel === '' || $rel === '.' || $rel === '..') {
+            return null;
+        }
+        $direct = $this->resolveInside($this->downloadsRoot, $this->downloadsRoot . '/' . $rel);
+        if ($direct !== null && $direct !== (realpath($this->downloadsRoot) ?: $this->downloadsRoot) && file_exists($direct)) {
             return $direct;
         }
 
@@ -281,11 +298,25 @@ class DownloadImporter
         return ($real === $realRoot || str_starts_with($real, $realRoot . DIRECTORY_SEPARATOR)) ? $real : null;
     }
 
+    /** Closest existing ancestor of $path (or $path itself), so realpath() has something to resolve. */
+    private function firstExistingAncestor(string $path): string
+    {
+        while (!file_exists($path) && !is_link($path)) {
+            $up = dirname($path);
+            if ($up === $path) {
+                break;
+            }
+            $path = $up;
+        }
+        return $path;
+    }
+
     private function sanitize(string $s): string
     {
         // Strip path separators and control chars; keep it filesystem-safe.
         $s = preg_replace('#[/\\\\\x00-\x1F]+#', ' ', $s);
         $s = trim(preg_replace('/\s+/', ' ', $s));
+        $s = trim($s, '. ');   // no '.', '..', '...' or trailing dots as a folder name
         return $s === '' ? 'Soulseek' : mb_substr($s, 0, 200);
     }
 }

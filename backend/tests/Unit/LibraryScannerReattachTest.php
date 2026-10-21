@@ -44,6 +44,7 @@ class LibraryScannerReattachTest extends TestCase
         $this->tracks = $this->createMock(TrackRepositoryInterface::class);
         $this->scans = $this->createMock(ScanRepositoryInterface::class);
         $this->scans->method('start')->willReturn(1);
+        $this->scans->method('acquireLock')->willReturn(true);
     }
 
     protected function tearDown(): void

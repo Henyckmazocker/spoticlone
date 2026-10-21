@@ -5,6 +5,7 @@ namespace App\Infrastructure\Middleware;
 
 use App\Infrastructure\Session\SessionManager;
 use App\Domain\Repository\User\UserRepositoryInterface;
+use App\Domain\Services\AdminPolicy;
 
 /**
  * Authentication helper service (injected into controllers via DI).
@@ -48,7 +49,8 @@ class AuthMiddleware
         
         // Verify user still exists and is active
         $user = $this->userRepository->findById($userId);
-        if (!$user || !$user->isActive()) {
+        $tv = (int) ($_SESSION['user_data']['tv'] ?? -1);
+        if (!$user || !$user->isActive() || $tv !== $user->getTokenVersion()) {
             $this->sessionManager->logout();
             return [
                 'status' => 'error',
@@ -63,7 +65,7 @@ class AuthMiddleware
 
         return [
             'status' => 'success',
-            'user' => $user->toArray()
+            'user' => $user->toPublicArray() + ['is_admin' => AdminPolicy::isAdmin($user)]
         ];
     }
 

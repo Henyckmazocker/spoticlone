@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Router;
 
+use App\Controllers\AlbumRequestController;
 use App\Controllers\AuthController;
 use App\Controllers\LibraryController;
 use App\Controllers\PlaylistController;
@@ -102,10 +103,10 @@ class ActionRouter
         return match ($request['action']) {
             // ---- AUTH ----
             'login' => $controller->login($data),
-            'logout' => $controller->logout(),
+            'logout' => $controller->logout($userId),
             'check_auth' => $controller->checkAuth(),
             'me' => $controller->me($userId),
-            'update_user_profile' => $controller->updateProfile($data),
+            'update_user_profile' => $controller->updateProfile($data, $userId),
             'log_frontend' => $controller->logFrontend($data['log_data'] ?? []),
             'log_frontend_batch' => $controller->logFrontendBatch($data['logs'] ?? []),
             'ping' => ['status' => 'success', 'message' => 'pong', 'http_code' => 200],
@@ -157,6 +158,13 @@ class ActionRouter
             'slsk_import' => $controller->slskImport($data, $userId),
             'slsk_retry_missing' => $controller->slskRetryMissing($data, $userId),
 
+            // ---- ALBUM REQUESTS ----
+            'request_album' => $controller->requestAlbum($data, $userId),
+            'get_my_album_requests' => $controller->getMyAlbumRequests($data, $userId),
+            'cancel_album_request' => $controller->cancelAlbumRequest($data, $userId),
+            'get_album_requests' => $controller->getAlbumRequests($data, $userId),
+            'reject_album_request' => $controller->rejectAlbumRequest($data, $userId),
+
             default => [
                 'status' => 'error',
                 'message' => "Controller method not mapped for action: {$request['action']}",
@@ -175,6 +183,7 @@ class ActionRouter
             'PlaybackController' => $this->container->get(PlaybackController::class),
             'RecommendationController' => $this->container->get(RecommendationController::class),
             'SoulseekController' => $this->container->get(SoulseekController::class),
+            'AlbumRequestController' => $this->container->get(AlbumRequestController::class),
             default => throw new \RuntimeException("Unknown controller: {$controllerName}"),
         };
     }

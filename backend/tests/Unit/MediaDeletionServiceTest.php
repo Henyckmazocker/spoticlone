@@ -6,6 +6,7 @@ namespace Tests\Unit;
 
 use App\Domain\Repository\Music\AlbumRepositoryInterface;
 use App\Domain\Repository\Music\ArtistRepositoryInterface;
+use App\Domain\Repository\Music\TrackRepositoryInterface;
 use App\Domain\Services\MediaDeletionService;
 use PHPUnit\Framework\TestCase;
 
@@ -51,7 +52,9 @@ class MediaDeletionServiceTest extends TestCase
         $artists = $this->createMock(ArtistRepositoryInterface::class);
         $artists->expects($this->never())->method('delete');
 
-        $result = (new MediaDeletionService($artists, $albums))->deleteAlbum(1);
+        $tracks = $this->tracksOf([$folder . '/01 - track.flac']);
+
+        $result = (new MediaDeletionService($artists, $albums, $tracks))->deleteAlbum(1);
 
         $this->assertSame(['deleted' => true, 'files_removed' => 2, 'ghost' => true], $result); // track + cover
         $this->assertDirectoryDoesNotExist($folder);
@@ -75,7 +78,9 @@ class MediaDeletionServiceTest extends TestCase
         $artists = $this->createMock(ArtistRepositoryInterface::class);
         $artists->expects($this->never())->method('delete');
 
-        $result = (new MediaDeletionService($artists, $albums))->deleteAlbum(1);
+        $tracks = $this->tracksOf([$folder . '/t.flac']);
+
+        $result = (new MediaDeletionService($artists, $albums, $tracks))->deleteAlbum(1);
 
         $this->assertTrue($result['ghost']);
         $this->assertDirectoryDoesNotExist($folder);
@@ -94,7 +99,7 @@ class MediaDeletionServiceTest extends TestCase
         $artists = $this->createMock(ArtistRepositoryInterface::class);
         $artists->expects($this->never())->method('delete');
 
-        $result = (new MediaDeletionService($artists, $albums))->deleteAlbum(1);
+        $result = (new MediaDeletionService($artists, $albums, $this->tracksOf([])))->deleteAlbum(1);
 
         $this->assertSame(['deleted' => true, 'files_removed' => 0, 'ghost' => true], $result);
     }
@@ -114,7 +119,9 @@ class MediaDeletionServiceTest extends TestCase
 
         $artists = $this->createMock(ArtistRepositoryInterface::class);
 
-        $result = (new MediaDeletionService($artists, $albums))->deleteAlbum(1);
+        $tracks = $this->tracksOf([$outside . '/keep.flac']);
+
+        $result = (new MediaDeletionService($artists, $albums, $tracks))->deleteAlbum(1);
 
         $this->assertFalse($result['deleted']);
         $this->assertTrue($result['incomplete']);
@@ -130,7 +137,7 @@ class MediaDeletionServiceTest extends TestCase
         $albums->expects($this->never())->method('delete');
         $artists = $this->createMock(ArtistRepositoryInterface::class);
 
-        $result = (new MediaDeletionService($artists, $albums))->deleteAlbum(99);
+        $result = (new MediaDeletionService($artists, $albums, $this->tracksOf([])))->deleteAlbum(99);
 
         $this->assertFalse($result['deleted']);
     }
@@ -159,7 +166,13 @@ class MediaDeletionServiceTest extends TestCase
             ->willReturnCallback(function (int $id) use (&$marked) { $marked[] = $id; });
         $albums->expects($this->never())->method('delete');
 
-        $result = (new MediaDeletionService($artists, $albums))->deleteArtist(7);
+        $tracks = $this->createMock(TrackRepositoryInterface::class);
+        $tracks->method('findByAlbum')->willReturnMap([
+            [1, [['file_path' => $f1 . '/a.flac']]],
+            [2, [['file_path' => $f2 . '/b.flac']]],
+        ]);
+
+        $result = (new MediaDeletionService($artists, $albums, $tracks))->deleteArtist(7);
 
         $this->assertTrue($result['deleted']);
         $this->assertSame(2, $result['albums_removed']);
@@ -180,7 +193,7 @@ class MediaDeletionServiceTest extends TestCase
         $artists = $this->createMock(ArtistRepositoryInterface::class);
         $artists->expects($this->never())->method('delete');
 
-        $result = (new MediaDeletionService($artists, $albums))->forgetAlbum(1);
+        $result = (new MediaDeletionService($artists, $albums, $this->tracksOf([])))->forgetAlbum(1);
 
         $this->assertFalse($result['forgotten']);
         $this->assertSame('not_ghost', $result['error']);
@@ -193,7 +206,7 @@ class MediaDeletionServiceTest extends TestCase
         $albums->expects($this->never())->method('delete');
         $artists = $this->createMock(ArtistRepositoryInterface::class);
 
-        $result = (new MediaDeletionService($artists, $albums))->forgetAlbum(99);
+        $result = (new MediaDeletionService($artists, $albums, $this->tracksOf([])))->forgetAlbum(99);
 
         $this->assertSame('not_found', $result['error']);
     }
@@ -209,7 +222,7 @@ class MediaDeletionServiceTest extends TestCase
         $artists = $this->createMock(ArtistRepositoryInterface::class);
         $artists->expects($this->once())->method('delete')->with(7)->willReturn(true);
 
-        $result = (new MediaDeletionService($artists, $albums))->forgetAlbum(1);
+        $result = (new MediaDeletionService($artists, $albums, $this->tracksOf([])))->forgetAlbum(1);
 
         $this->assertSame(['forgotten' => true, 'artist_removed' => true], $result);
     }
@@ -226,9 +239,93 @@ class MediaDeletionServiceTest extends TestCase
         $artists = $this->createMock(ArtistRepositoryInterface::class);
         $artists->expects($this->never())->method('delete');
 
-        $result = (new MediaDeletionService($artists, $albums))->forgetAlbum(1);
+        $result = (new MediaDeletionService($artists, $albums, $this->tracksOf([])))->forgetAlbum(1);
 
         $this->assertSame(['forgotten' => true, 'artist_removed' => false], $result);
+    }
+
+    /** (a) Album alone in its folder, with cover.jpg and .cue: the whole folder goes, as before. */
+    public function test_scenario_a_album_alone_in_folder_removes_whole_folder(): void
+    {
+        $folder = $this->music . '/Solo/Album';
+        mkdir($folder, 0775, true);
+        file_put_contents($folder . '/01.flac', 'a');
+        file_put_contents($folder . '/02.flac', 'b');
+        file_put_contents($folder . '/cover.jpg', 'jpg');
+        file_put_contents($folder . '/album.cue', 'cue');
+
+        $albums = $this->albumsWith([1 => ['id' => 1, 'artist_id' => 7, 'folder_path' => $folder]]);
+        $tracks = $this->tracksOf([$folder . '/01.flac', $folder . '/02.flac']);
+
+        $result = (new MediaDeletionService($this->createMock(ArtistRepositoryInterface::class), $albums, $tracks))->deleteAlbum(1);
+
+        $this->assertTrue($result['ghost']);
+        $this->assertSame(4, $result['files_removed']);
+        $this->assertDirectoryDoesNotExist($folder);
+    }
+
+    /** (b) Two albums in the same folder: deleting one leaves the other's files and the folder. */
+    public function test_scenario_b_two_albums_sharing_a_folder_keeps_the_other(): void
+    {
+        $folder = $this->music . '/Various/Mix';
+        mkdir($folder, 0775, true);
+        file_put_contents($folder . '/a1.flac', 'a');
+        file_put_contents($folder . '/a2.flac', 'a');
+        file_put_contents($folder . '/b1.flac', 'b');
+        file_put_contents($folder . '/b2.flac', 'b');
+
+        $albums = $this->albumsWith([1 => ['id' => 1, 'artist_id' => 7, 'folder_path' => $folder]]);
+        $tracks = $this->tracksOf([$folder . '/a1.flac', $folder . '/a2.flac']);
+
+        $result = (new MediaDeletionService($this->createMock(ArtistRepositoryInterface::class), $albums, $tracks))->deleteAlbum(1);
+
+        $this->assertTrue($result['ghost']);
+        $this->assertSame(2, $result['files_removed']);
+        $this->assertFileDoesNotExist($folder . '/a1.flac');
+        $this->assertFileDoesNotExist($folder . '/a2.flac');
+        $this->assertFileExists($folder . '/b1.flac');
+        $this->assertFileExists($folder . '/b2.flac');
+        $this->assertDirectoryExists($folder);
+    }
+
+    /** (c) Loose tracks in /music/Artista/ next to another album's subfolder: only its own tracks go. */
+    public function test_scenario_c_loose_tracks_next_to_other_album_subfolder(): void
+    {
+        $artistDir = $this->music . '/Artist';
+        $other = $artistDir . '/Other Album';
+        mkdir($other, 0775, true);
+        file_put_contents($artistDir . '/loose1.flac', 'l');
+        file_put_contents($artistDir . '/loose2.flac', 'l');
+        file_put_contents($other . '/o1.flac', 'o');
+
+        $albums = $this->albumsWith([1 => ['id' => 1, 'artist_id' => 7, 'folder_path' => $artistDir]]);
+        $tracks = $this->tracksOf([$artistDir . '/loose1.flac', $artistDir . '/loose2.flac']);
+
+        $result = (new MediaDeletionService($this->createMock(ArtistRepositoryInterface::class), $albums, $tracks))->deleteAlbum(1);
+
+        $this->assertTrue($result['ghost']);
+        $this->assertSame(2, $result['files_removed']);
+        $this->assertFileDoesNotExist($artistDir . '/loose1.flac');
+        $this->assertFileDoesNotExist($artistDir . '/loose2.flac');
+        $this->assertFileExists($other . '/o1.flac');
+    }
+
+    /** @param array<int, array<string, mixed>> $rows album rows by id (missing_at/cover_path default to null) */
+    private function albumsWith(array $rows): AlbumRepositoryInterface
+    {
+        $albums = $this->createMock(AlbumRepositoryInterface::class);
+        $albums->method('findById')->willReturnCallback(
+            fn(int $id) => isset($rows[$id]) ? $rows[$id] + ['cover_path' => null, 'missing_at' => null] : null
+        );
+        return $albums;
+    }
+
+    /** @param string[] $paths file_path of the tracks returned for any album */
+    private function tracksOf(array $paths): TrackRepositoryInterface
+    {
+        $tracks = $this->createMock(TrackRepositoryInterface::class);
+        $tracks->method('findByAlbum')->willReturn(array_map(fn(string $p) => ['file_path' => $p], $paths));
+        return $tracks;
     }
 
     private function rrmdir(string $dir): void

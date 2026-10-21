@@ -51,7 +51,8 @@ class UserDataMapper
             $this->extractJson($row, 'preferences', []),
             $this->extractBool($row, 'is_active', false),
             $this->extractString($row, 'lastfm_username', null),
-            $this->extractString($row, 'username', null)
+            $this->extractString($row, 'username', null),
+            $this->extractInt($row, 'token_version', 0)
         );
     }
 

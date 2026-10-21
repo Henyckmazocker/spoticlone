@@ -11,7 +11,7 @@
           <button class="btn" :disabled="radioLoading" @click="playRadio">
             <Icon name="play" :size="16" /> Radio
           </button>
-          <button class="btn-ghost" style="color:var(--danger)" @click="confirmOpen = true">
+          <button v-if="auth.isAdmin" class="btn-ghost" style="color:var(--danger)" @click="confirmOpen = true">
             <Icon name="trash" :size="16" /> Eliminar artista
           </button>
         </div>
@@ -44,6 +44,7 @@
 import { ref, watch, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { useLibraryStore } from '@/store/library';
+import { useAuthStore } from '@/store/auth';
 import { usePlayerStore } from '@/store/player';
 import { apiCall } from '@/services/api';
 import AlbumCard from '@/components/AlbumCard.vue';
@@ -52,6 +53,7 @@ import Icon from '@/components/Icon.vue';
 
 const props = defineProps({ id: { type: [String, Number], required: true } });
 const lib = useLibraryStore();
+const auth = useAuthStore();
 const router = useRouter();
 const player = usePlayerStore();
 const artist = ref(null);

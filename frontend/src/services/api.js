@@ -61,7 +61,10 @@ export async function apiCall(action, payload = {}) {
   try {
     ({ data } = await http.post('', body));
   } catch (e) {
-    if (e.response?.status === 401 && !AUTH_ACTIONS.has(action)) unauthorizedHandler?.();
+    const status = e.response?.status;
+    if (status === 401 && !AUTH_ACTIONS.has(action)) unauthorizedHandler?.();
+    // 429 (límite de nginx) y 415 son errores normales: nunca mandan al login
+    else if (status === 429) e.message = 'Demasiadas peticiones, espera un momento';
     throw e;
   }
   if (data.status !== 'success') {

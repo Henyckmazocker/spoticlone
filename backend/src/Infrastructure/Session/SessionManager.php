@@ -73,7 +73,8 @@ class SessionManager
             'email' => $user->getEmail()->toString(),
             'name' => $user->getName(),
             'picture' => $user->getPicture(),
-            'is_active' => $user->isActive()
+            'is_active' => $user->isActive(),
+            'tv' => $user->getTokenVersion()
         ];
         
         $_SESSION['last_activity'] = time();
@@ -143,7 +144,8 @@ class SessionManager
                 'email' => $user->getEmail()->toString(),
                 'name' => $user->getName(),
                 'picture' => $user->getPicture(),
-                'is_active' => $user->isActive()
+                'is_active' => $user->isActive(),
+                'tv' => $user->getTokenVersion()
             ];
         }
     }

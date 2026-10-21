@@ -26,7 +26,8 @@
 
     <p v-if="!recent.length && !most.length && !recTracks.length && !recAlbums.length" class="muted">
       Aún no has reproducido nada. Ve a <router-link to="/artists" style="color:var(--accent)">Artistas</router-link>
-      o <router-link to="/scan" style="color:var(--accent)">escanea tu biblioteca</router-link> para empezar.
+      <template v-if="auth.isAdmin">o <router-link to="/scan" style="color:var(--accent)">escanea tu biblioteca</router-link></template>
+      <template v-else>o busca algo</template> para empezar.
     </p>
   </div>
 </template>
@@ -35,10 +36,12 @@
 import { ref, computed, onMounted } from 'vue';
 import { apiCall } from '@/services/api';
 import { usePlayerStore } from '@/store/player';
+import { useAuthStore } from '@/store/auth';
 import TrackList from '@/components/TrackList.vue';
 import AlbumCard from '@/components/AlbumCard.vue';
 
 const player = usePlayerStore();
+const auth = useAuthStore();
 const recent = ref([]);
 const most = ref([]);
 const mode = ref('personal');

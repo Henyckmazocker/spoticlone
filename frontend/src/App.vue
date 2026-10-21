@@ -13,7 +13,7 @@
       <div style="flex:1"></div>
       <button class="icon-btn" :class="{ active: ui.queueOpen }" title="Cola" @click="ui.toggleQueue()"><Icon name="queue" /></button>
       <router-link to="/favorites" class="icon-btn" title="Favoritos"><Icon name="favorite" /></router-link>
-      <router-link to="/scan" class="icon-btn" title="Escanear"><Icon name="scan" /></router-link>
+      <router-link v-if="auth.isAdmin" to="/scan" class="icon-btn" title="Escanear"><Icon name="scan" /></router-link>
       <a v-if="!isNative" class="icon-btn" href="/app/spoticlone.apk" download title="Descargar la app para Android"><Icon name="download" /></a>
       <button class="icon-btn" title="Cerrar sesión" @click="logout"><Icon name="logout" /></button>
     </header>
@@ -27,13 +27,13 @@
         <router-link to="/home" class="nav-item"><Icon name="home" /> Inicio</router-link>
         <router-link to="/search" class="nav-item"><Icon name="search" /> Buscar</router-link>
         <router-link to="/discover" class="nav-item"><Icon name="discover" /> Descubrir</router-link>
-        <router-link to="/descargas" class="nav-item"><Icon name="download" /> Descargas</router-link>
+        <router-link v-if="auth.isAdmin" to="/descargas" class="nav-item"><Icon name="download" /> Descargas</router-link>
         <router-link to="/artists" class="nav-item"><Icon name="artist" /> Artistas</router-link>
         <div class="nav-sep"></div>
         <router-link to="/playlists" class="nav-item"><Icon name="playlist" /> Playlists</router-link>
         <router-link to="/favorites" class="nav-item"><Icon name="favorite" /> Favoritos</router-link>
-        <div class="nav-sep"></div>
-        <router-link to="/scan" class="nav-item"><Icon name="scan" /> Escanear</router-link>
+        <div v-if="auth.isAdmin" class="nav-sep"></div>
+        <router-link v-if="auth.isAdmin" to="/scan" class="nav-item"><Icon name="scan" /> Escanear</router-link>
       </nav>
       <div style="flex:1"></div>
       <a v-if="!isNative" class="btn-ghost" style="margin-bottom:8px;" href="/app/spoticlone.apk" download><Icon name="download" :size="16" /> App Android</a>
@@ -92,8 +92,9 @@ async function logout() {
 // termina de importarse aunque el usuario esté en cualquier otra pantalla. Va por watcher y no por
 // onMounted porque App.vue se monta una sola vez, y al arrancar en el login aún no hay sesión.
 watch(
-  () => auth.isAuthenticated,
+  () => auth.isAuthenticated && auth.isAdmin,
   async (authed) => {
+    // slsk_* son de admin: un usuario normal recibiría 403 en cada sondeo.
     if (!authed) return soulseek.stopPolling();
     try {
       await soulseek.refreshDownloads();

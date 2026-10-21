@@ -33,10 +33,34 @@ try {
 }
 
 $path = $album['cover_path'] ?? null;
-if (!$path || !is_file($path)) {
+if (!$path) {
     http_response_code(404);
     exit;
 }
+
+// Defense in depth (same pattern as stream.php): the resolved file must live inside MUSIC_ROOT or
+// COVERS_PATH, so a cover_path pointing elsewhere (or a symlink out of the library) is a 404, not
+// a 403, to avoid confirming the path exists. An unset/missing root is dropped: realpath('') would
+// resolve to the current directory.
+$musicRoot = rtrim($_ENV['MUSIC_ROOT'] ?? '/music', '/');
+$coversPath = rtrim($_ENV['COVERS_PATH'] ?? (__DIR__ . '/../storage/covers'), '/');
+$roots = array_filter([realpath($musicRoot), realpath($coversPath)]);
+$real = realpath($path);
+
+$inside = false;
+if ($real !== false && is_file($real)) {
+    foreach ($roots as $root) {
+        if (strpos($real, $root . DIRECTORY_SEPARATOR) === 0) {
+            $inside = true;
+            break;
+        }
+    }
+}
+if (!$inside) {
+    http_response_code(404);
+    exit;
+}
+$path = $real;
 
 $mime = match (strtolower(pathinfo($path, PATHINFO_EXTENSION))) {
     'png'  => 'image/png',

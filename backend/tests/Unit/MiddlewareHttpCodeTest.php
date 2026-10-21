@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Unit;
 
+use App\Infrastructure\Middleware\AdminMiddleware;
 use App\Infrastructure\Middleware\CSRFMiddleware;
 use App\Infrastructure\Middleware\ValidationMiddleware;
 use PHPUnit\Framework\TestCase;
@@ -48,6 +49,37 @@ class MiddlewareHttpCodeTest extends TestCase
             'auth_method' => 'session',
             'csrf_token'  => 'fake-token',
         ], $next);
+
+        $this->assertSame('error', $result['status']);
+        $this->assertSame(403, $result['http_code']);
+        $this->assertArrayNotHasKey('code', $result);
+    }
+
+    public function test_csrf_token_as_array_returns_http_code_403(): void
+    {
+        $_SESSION['csrf_token'] = 'real-token';
+        $middleware = new CSRFMiddleware(new NullLogger());
+        $next = function (array $request): array {
+            $this->fail('next() must not be called with a non-string CSRF token');
+        };
+
+        $result = $middleware->handle([
+            'action'      => 'log_play',
+            'auth_method' => 'session',
+            'csrf_token'  => ['real-token'],
+        ], $next);
+
+        $this->assertSame(403, $result['http_code']);
+    }
+
+    public function test_admin_middleware_without_user_returns_http_code_403(): void
+    {
+        $middleware = new AdminMiddleware();
+        $next = function (array $request): array {
+            $this->fail('next() must not be called without an admin user');
+        };
+
+        $result = $middleware->handle(['action' => 'delete_album'], $next);
 
         $this->assertSame('error', $result['status']);
         $this->assertSame(403, $result['http_code']);

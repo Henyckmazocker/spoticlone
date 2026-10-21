@@ -4,7 +4,7 @@ services:
       context: .
       dockerfile: docker/frontend/Dockerfile.frontend.dev
     ports:
-      - "8086:8080"
+      - "127.0.0.1:8086:8080"
     volumes:
       - ./frontend/src:/app/src
       - ./frontend/public:/app/public
@@ -24,7 +24,7 @@ services:
       context: .
       dockerfile: docker/backend/Dockerfile.backend.dev
     ports:
-      - "8892:80"
+      - "127.0.0.1:8892:80"
     volumes:
       - ./backend:/var/www/html
       - backend_vendor:/var/www/html/vendor
@@ -44,6 +44,8 @@ services:
       - JWT_SECRET=${JWT_SECRET}
       - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
       - MAX_USERS=${MAX_USERS:-10}
+      # Emails con rol admin (lista separada por comas). Vacío = nadie es admin.
+      - ADMIN_EMAILS=${ADMIN_EMAILS:-}
       - MUSIC_ROOT=/music
       - COVERS_PATH=/var/www/html/storage/covers
       - STREAM_URL_TTL=${STREAM_URL_TTL:-3600}
@@ -82,7 +84,7 @@ services:
     command:
       - --performance-schema=OFF
     ports:
-      - "3311:3306"
+      - "127.0.0.1:3311:3306"
     environment:
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
       MYSQL_DATABASE: spoticlone_db

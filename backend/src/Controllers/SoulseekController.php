@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Controllers;
 
+use App\Domain\Repository\Music\AlbumRequestRepositoryInterface;
 use App\Domain\Repository\Music\DownloadRepositoryInterface;
 use App\Domain\Services\DownloadReconciler;
 use App\Domain\Services\LibraryMatcher;
@@ -36,6 +37,7 @@ class SoulseekController extends BaseController
         private readonly DownloadRepositoryInterface $downloads,
         private readonly DownloadReconciler $reconciler,
         private readonly LibraryMatcher $matcher,
+        private readonly AlbumRequestRepositoryInterface $requests,
         private readonly ?LoggerInterface $logger = null
     ) {}
 
@@ -109,6 +111,11 @@ class SoulseekController extends BaseController
         $id = trim((string) ($data['search_id'] ?? ''));
         if ($id === '') {
             return $this->errorResponse('Falta search_id.', 400);
+        }
+        // Lo genera SlskdClient::guid() (GUID v4): cualquier otra forma ('../options') llegaría a
+        // la API de slskd con nuestra API key.
+        if (!preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i', $id)) {
+            return $this->errorResponse('search_id inválido.', 400);
         }
 
         try {
@@ -192,8 +199,15 @@ class SoulseekController extends BaseController
             if (!in_array($ext, self::AUDIO_EXTS, true)) {
                 continue;
             }
+            $remoteDir = dirname(str_replace('\\', '/', $filename));
+            // A file with no folder ("x.flac" -> ".", "\\x.flac" -> "") would make local_folder point
+            // at the downloads root itself, and discard/import would then act on all of it.
+            $leaf = basename($remoteDir);
+            if ($remoteDir === '' || $leaf === '' || $leaf === '.' || $leaf === '..') {
+                return $this->errorResponse('La descarga debe estar dentro de una carpeta.', 400);
+            }
             $payload[] = ['filename' => $filename, 'size' => (int) ($f['size'] ?? 0)];
-            $remoteDirs[dirname(str_replace('\\', '/', $filename))] = true;
+            $remoteDirs[$remoteDir] = true;
         }
         if (!$payload) {
             return $this->errorResponse('Lista de ficheros vacía o sin audio.', 400);
@@ -229,12 +243,13 @@ class SoulseekController extends BaseController
 
         // Persist the tracking rows: this is what survives an F5, a closed tab or a container
         // restart, and what tells the reconciler how many files to expect.
+        $downloadId = null;
         foreach (array_keys($remoteDirs) as $remoteDir) {
             $expected = count(array_filter(
                 $payload,
                 fn ($p) => dirname(str_replace('\\', '/', $p['filename'])) === $remoteDir
             ));
-            $this->downloads->upsertQueued($userId, [
+            $downloadId = $this->downloads->upsertQueued($userId, [
                 'slskd_username' => $username,
                 'remote_dir'     => $remoteDir,
                 'local_folder'   => basename($remoteDir),
@@ -243,6 +258,13 @@ class SoulseekController extends BaseController
                 'replace_album_id' => $replaceAlbumId,
                 'expected_files' => $expected,
             ]);
+        }
+
+        // Launched from an album request (admin queue): it is now downloading. The duplicate/skip
+        // paths returned above, so they never reach this point and leave the request untouched.
+        $requestId = (int) ($data['request_id'] ?? 0);
+        if ($requestId > 0 && $downloadId !== null) {
+            $this->requests->setStatus($requestId, 'downloading', ['download_id' => $downloadId]);
         }
 
         return $this->successResponse('Descarga encolada', ['queued' => count($payload)]);

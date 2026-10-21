@@ -9,15 +9,23 @@ use App\Infrastructure\Middleware\AuthMiddleware;
 use App\Infrastructure\Auth\GoogleOAuthVerifier;
 use App\Infrastructure\Auth\JWTService;
 use App\Domain\UseCases\Auth\UserLimitReachedException;
+use App\Domain\Model\User;
+use App\Domain\Repository\User\UserRepositoryInterface;
+use App\Domain\Services\AdminPolicy;
 
 class AuthController extends BaseController implements Contracts\AuthControllerInterface
 {
+    private const MAX_BATCH_LOGS = 20;
+    private const MAX_LOG_MESSAGE = 1000;
+    private const MAX_LOG_CONTEXT_BYTES = 2048;
+
     private LoginUserUseCase $loginUserUseCase;
     private UpdateUserProfileUseCase $updateUserProfileUseCase;
     private SessionManager $sessionManager;
     private AuthMiddleware $authMiddleware;
     private GoogleOAuthVerifier $googleVerifier;
     private JWTService $jwtService;
+    private UserRepositoryInterface $userRepository;
 
     public function __construct(
         LoginUserUseCase $loginUserUseCase,
@@ -25,8 +33,10 @@ class AuthController extends BaseController implements Contracts\AuthControllerI
         SessionManager $sessionManager,
         AuthMiddleware $authMiddleware,
         GoogleOAuthVerifier $googleVerifier,
-        JWTService $jwtService
+        JWTService $jwtService,
+        UserRepositoryInterface $userRepository
     ) {
+        $this->userRepository = $userRepository;
         $this->loginUserUseCase = $loginUserUseCase;
         $this->updateUserProfileUseCase = $updateUserProfileUseCase;
         $this->sessionManager = $sessionManager;
@@ -53,22 +63,36 @@ class AuthController extends BaseController implements Contracts\AuthControllerI
         }
         $this->sessionManager->login($user);
         
-        $jwtToken = $this->jwtService->generate([
-            'user_id' => $user->getId(),
-            'email'   => $user->getEmail()->toString(),
-            'name'    => $user->getName(),
-            'picture' => $user->getPicture(),
-        ]);
-
-        return $this->successResponse('Login successful.', [
-            'user'       => $user->toArray(),
+        $data = [
+            'user'       => $this->publicUser($user),
             'csrf_token' => $this->authMiddleware->getCSRFToken(),
-            'jwt_token'  => $jwtToken,
-        ]);
+        ];
+
+        // JWT only for the native app (client:'native'); the web relies on the session cookie alone.
+        if (($inputData['client'] ?? null) === 'native') {
+            $data['jwt_token'] = $this->jwtService->generate([
+                'user_id' => $user->getId(),
+                'email'   => $user->getEmail()->toString(),
+                'name'    => $user->getName(),
+                'picture' => $user->getPicture(),
+                'tv'      => $user->getTokenVersion(),
+            ]);
+        }
+
+        return $this->successResponse('Login successful.', $data);
     }
 
-    public function logout(): array
+    private function publicUser(User $user): array
     {
+        return $user->toPublicArray() + ['is_admin' => AdminPolicy::isAdmin($user)];
+    }
+
+    public function logout(?int $userId = null): array
+    {
+        // Bump token_version first: revokes every JWT and session of this user (all devices).
+        if ($userId) {
+            $this->userRepository->incrementTokenVersion($userId);
+        }
         $this->sessionManager->logout();
         return $this->successResponse('Logout successful.');
     }
@@ -96,15 +120,18 @@ class AuthController extends BaseController implements Contracts\AuthControllerI
         if (!$userId) {
             return $this->errorResponse('Authentication required.', 401);
         }
-        return $this->successResponse('Authenticated', ['user_id' => $userId]);
+        $user = $this->userRepository->findById($userId);
+        if (!$user) {
+            return $this->errorResponse('Authentication required.', 401);
+        }
+        return $this->successResponse('Authenticated', ['user' => $this->publicUser($user)]);
     }
 
-    public function updateProfile(array $inputData): array
+    public function updateProfile(array $inputData, ?int $userId): array
     {
-        $userId = $inputData['userId'] ?? $inputData['user_id'] ?? null;
-
+        // The id ALWAYS comes from the auth middleware; any userId/user_id in the body is ignored.
         if (!$userId) {
-            return $this->errorResponse('User ID is required.');
+            return $this->errorResponse('Authentication required.', 401);
         }
 
         try {
@@ -112,7 +139,7 @@ class AuthController extends BaseController implements Contracts\AuthControllerI
             $user = $this->updateUserProfileUseCase->execute($command);
 
             return $this->successResponse('Profile updated successfully.', [
-                'user' => $user->toArray()
+                'user' => $this->publicUser($user)
             ]);
         } catch (\InvalidArgumentException $e) {
             return $this->errorResponse($e->getMessage());
@@ -124,6 +151,9 @@ class AuthController extends BaseController implements Contracts\AuthControllerI
         if (empty($logData)) {
             return $this->errorResponse('Invalid log data format.');
         }
+
+        // Tope por entrada: message ≤ 1000 chars, contexto ≤ 2 KB (se trunca, no se rechaza)
+        $logData = $this->capLogEntry($logData);
         
         try {
             // Preserve complete frontend log data
@@ -187,6 +217,10 @@ class AuthController extends BaseController implements Contracts\AuthControllerI
             return $this->errorResponse('No log entries provided.');
         }
 
+        if (count($logs) > self::MAX_BATCH_LOGS) {
+            return $this->errorResponse('Too many log entries (max ' . self::MAX_BATCH_LOGS . ').', 400);
+        }
+
         $count = 0;
         foreach ($logs as $logData) {
             if (!is_array($logData) || empty($logData)) {
@@ -200,7 +234,24 @@ class AuthController extends BaseController implements Contracts\AuthControllerI
         return $this->successResponse("Recorded {$count} log entries.");
     }
 
-    /**
-     * Handle HTTP request for auth endpoints
-     */
+    /** Recorta message y el resto del contexto de una entrada de log del frontend. */
+    private function capLogEntry(array $entry): array
+    {
+        if (isset($entry['message'])) {
+            $entry['message'] = is_scalar($entry['message'])
+                ? mb_substr((string) $entry['message'], 0, self::MAX_LOG_MESSAGE)
+                : 'Frontend log entry';
+        }
+        $context = $entry;
+        unset($context['message']);
+        $json = json_encode($context, JSON_UNESCAPED_UNICODE | JSON_PARTIAL_OUTPUT_ON_ERROR);
+        if ($json === false || strlen($json) > self::MAX_LOG_CONTEXT_BYTES) {
+            $entry = [
+                'message' => $entry['message'] ?? 'Frontend log entry',
+                'level' => is_string($entry['level'] ?? null) ? $entry['level'] : 'info',
+                'truncated_context' => mb_strcut((string) $json, 0, self::MAX_LOG_CONTEXT_BYTES),
+            ];
+        }
+        return $entry;
+    }
 }

@@ -6,6 +6,7 @@ namespace App\Domain\Services;
 
 use App\Domain\Repository\Music\AlbumRepositoryInterface;
 use App\Domain\Repository\Music\ArtistRepositoryInterface;
+use App\Domain\Repository\Music\TrackRepositoryInterface;
 use FilesystemIterator;
 use Psr\Log\LoggerInterface;
 use RecursiveDirectoryIterator;
@@ -16,8 +17,10 @@ use RecursiveIteratorIterator;
  *
  * Soft delete: the files go first (best-effort) and only then the album and its tracks are marked
  * missing, so ids — and with them play_history, favorites and playlist_tracks — survive and a
- * re-download can be reattached by the scanner. If the disk removal leaves the album folder behind,
- * the album stays live and can be deleted again (never a ghost with files on disk). Artists are
+ * re-download can be reattached by the scanner. Files are removed track by track (never the whole
+ * folder blindly: it may be shared with another album); the folder only goes when no audio is left in
+ * it. If a track file cannot be removed the album stays live and can be deleted again (never a ghost
+ * with files on disk). Artists are
  * never removed here; forgetAlbum() is the hard delete (ON DELETE CASCADE) and only accepts ghosts.
  *
  * Every path is checked against MUSIC_ROOT (realpath, no traversal, never the root itself) before
@@ -31,6 +34,7 @@ class MediaDeletionService
     public function __construct(
         private readonly ArtistRepositoryInterface $artists,
         private readonly AlbumRepositoryInterface $albums,
+        private readonly TrackRepositoryInterface $tracks,
         private readonly ?LoggerInterface $logger = null
     ) {
         $this->musicRoot = rtrim($_ENV['MUSIC_ROOT'] ?? '/music', '/');
@@ -142,19 +146,18 @@ class MediaDeletionService
     }
 
     /**
-     * Disk first, then DB: the album is marked missing only once its folder is gone.
+     * Disk first, then DB: the album is marked missing only once all its track files are gone.
      *
      * @param array<string, mixed> $album
      * @return array{0:int, 1:bool} [files removed, marked as ghost]
      */
     private function ghostAlbum(array $album): array
     {
-        $folder = $album['folder_path'] ?? null;
-        $removed = $this->removeAlbumFiles($folder, $album['cover_path'] ?? null);
+        [$removed, $complete] = $this->removeAlbumFiles($album);
 
-        if (is_string($folder) && $folder !== '' && is_dir($folder)) {
-            $this->logger?->warning('MediaDeletionService: album folder still on disk, album kept live', [
-                'album_id' => $album['id'] ?? null, 'folder' => $folder,
+        if (!$complete) {
+            $this->logger?->warning('MediaDeletionService: album files still on disk, album kept live', [
+                'album_id' => $album['id'] ?? null, 'folder' => $album['folder_path'] ?? null,
             ]);
             return [$removed, false];
         }
@@ -164,21 +167,68 @@ class MediaDeletionService
     }
 
     /**
-     * Remove an album's folder (recursively) and, if it lives outside that folder, its cover file.
+     * Remove the files of the album's own tracks. The folder (with leftovers such as cover.jpg or
+     * .cue) is only removed when it no longer holds any audio, so an album sharing its folder with
+     * another one never takes the neighbour's files with it. A track file that exists but cannot be
+     * removed (unlink fails, or it lies outside MUSIC_ROOT) makes the result incomplete.
+     *
+     * @param array<string, mixed> $album
+     * @return array{0:int, 1:bool} [files removed, complete]
      */
-    private function removeAlbumFiles(?string $folder, ?string $coverPath): int
+    private function removeAlbumFiles(array $album): array
     {
         $removed = 0;
-        if (is_string($folder) && $folder !== '' && $this->isInsideMusicRoot($folder)) {
+        $complete = true;
+        foreach ($this->tracks->findByAlbum((int) $album['id']) as $track) {
+            $path = $track['file_path'] ?? '';
+            if (!is_string($path) || $path === '' || !is_file($path)) {
+                continue;
+            }
+            if (!$this->isInsideMusicRoot($path)) {
+                $complete = false;
+                continue;
+            }
+            if (@unlink($path)) {
+                $removed++;
+            } else {
+                $complete = false;
+                $this->logger?->warning('MediaDeletionService: could not unlink', ['path' => $path]);
+            }
+        }
+
+        $folder = $album['folder_path'] ?? null;
+        if ($complete && is_string($folder) && $folder !== '' && $this->isInsideMusicRoot($folder)
+            && !$this->containsAudio($folder)) {
             $removed += $this->removeDirRecursive($folder);
         }
+
         // Covers extracted to COVERS_PATH live outside the album folder, so unlink them apart.
-        if (is_string($coverPath) && $coverPath !== '' && $this->isInsideCovers($coverPath) && is_file($coverPath)) {
+        $coverPath = $album['cover_path'] ?? null;
+        if ($complete && is_string($coverPath) && $coverPath !== '' && $this->isInsideCovers($coverPath) && is_file($coverPath)) {
             if (@unlink($coverPath)) {
                 $removed++;
             }
         }
-        return $removed;
+        return [$removed, $complete];
+    }
+
+    /** True when the tree under $dir holds any audio file (same extensions as the scanner). */
+    private function containsAudio(string $dir): bool
+    {
+        if (!is_dir($dir)) {
+            return false;
+        }
+        $it = new RecursiveIteratorIterator(
+            new RecursiveDirectoryIterator($dir, FilesystemIterator::SKIP_DOTS)
+        );
+        foreach ($it as $item) {
+            /** @var \SplFileInfo $item */
+            if ($item->isFile()
+                && in_array(strtolower($item->getExtension()), LibraryScanner::AUDIO_EXTS, true)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /** The resolved path must live strictly inside MUSIC_ROOT (no traversal, never the root). */

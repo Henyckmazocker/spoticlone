@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia';
 import { apiCall, setCsrfToken, setJwt, getJwt } from '@/services/api';
+import { Capacitor } from '@capacitor/core';
 import { usePlayerStore } from '@/store/player';
 
 export const useAuthStore = defineStore('auth', {
@@ -8,16 +9,24 @@ export const useAuthStore = defineStore('auth', {
     isAuthenticated: false,
     authChecked: false
   }),
+  getters: {
+    isAdmin: (s) => !!s.user?.is_admin
+  },
   actions: {
     /** Resolve auth state on app start. JWT (mobile/dev) takes precedence over session. */
     async initialize() {
+      // Web in production authenticates with the session cookie only: drop any legacy JWT.
+      if (!Capacitor.isNativePlatform() && process.env.NODE_ENV === 'production') {
+        setJwt(null);
+      }
       if (getJwt()) {
         // Trust the stored token; the backend validates it per-request.
         this.isAuthenticated = true;
         this.authChecked = true;
         try {
           // A cheap authenticated call confirms the token still works.
-          await apiCall('me');
+          const me = await apiCall('me');
+          if (me?.user) this.user = me.user;
         } catch (e) {
           this.logout();
         }
@@ -36,7 +45,10 @@ export const useAuthStore = defineStore('auth', {
     },
 
     async loginWithGoogle(googleToken) {
-      const data = await apiCall('login', { google_token: googleToken });
+      // Only the native app asks for a JWT; the web uses the session cookie.
+      const payload = { google_token: googleToken };
+      if (Capacitor.isNativePlatform()) payload.client = 'native';
+      const data = await apiCall('login', payload);
       this.user = data.user;
       this.isAuthenticated = true;
       if (data.csrf_token) setCsrfToken(data.csrf_token);
@@ -44,11 +56,18 @@ export const useAuthStore = defineStore('auth', {
     },
 
     /** Developer/local login: store a hand-minted JWT (for testing without Google). */
-    loginWithToken(token) {
+    async loginWithToken(token) {
       setJwt(token);
+      try {
+        // Load the real user so is_admin is known before the first navigation.
+        const me = await apiCall('me');
+        this.user = me?.user ?? { name: 'Usuario local' };
+      } catch (e) {
+        setJwt(null);
+        throw e;
+      }
       this.isAuthenticated = true;
       this.authChecked = true;
-      this.user = { name: 'Usuario local' };
     },
 
     async logout() {

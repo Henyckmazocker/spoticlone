@@ -6,6 +6,7 @@ namespace Tests\Unit;
 
 use App\Controllers\SoulseekController;
 use App\Domain\Repository\Music\AlbumRepositoryInterface;
+use App\Domain\Repository\Music\AlbumRequestRepositoryInterface;
 use App\Domain\Repository\Music\DownloadRepositoryInterface;
 use App\Domain\Services\DownloadReconciler;
 use App\Domain\Services\LibraryMatcher;
@@ -34,6 +35,7 @@ class SoulseekControllerTest extends TestCase
     ];
 
     private DownloadRepositoryInterface&MockObject $downloads;
+    private AlbumRequestRepositoryInterface&MockObject $requests;
     /** Anonymous SlskdClient subclass that records what would have been enqueued (`$enqueued`). */
     private SlskdClient $slskd;
     private SoulseekController $controller;
@@ -43,6 +45,7 @@ class SoulseekControllerTest extends TestCase
         $albums = $this->createMock(AlbumRepositoryInterface::class);
         $albums->method('allForMatching')->willReturn(self::ROWS);
         $this->downloads = $this->createMock(DownloadRepositoryInterface::class);
+        $this->requests = $this->createMock(AlbumRequestRepositoryInterface::class);
         $this->slskd = new class extends SlskdClient {
             /** @var array<int, array{filename:string, size:int}> */
             public array $enqueued = [];
@@ -58,7 +61,8 @@ class SoulseekControllerTest extends TestCase
             $this->slskd,
             $this->downloads,
             $this->createMock(DownloadReconciler::class),
-            new LibraryMatcher($albums)
+            new LibraryMatcher($albums),
+            $this->requests
         );
     }
 
@@ -111,6 +115,39 @@ class SoulseekControllerTest extends TestCase
         $this->assertSame([12, 12], array_column($rows, 'replace_album_id'));   // CD1 and CD2
     }
 
+    public function test_request_id_moves_the_request_to_downloading_with_the_download_id(): void
+    {
+        $this->downloads->method('upsertQueued')->willReturnOnConsecutiveCalls(41, 42);
+        $this->requests->expects($this->once())->method('setStatus')
+            ->with(7, 'downloading', ['download_id' => 42]);
+
+        $res = $this->controller->slskDownload(
+            $this->request(['artist' => 'Nadie', 'album' => 'Nada', 'request_id' => 7]),
+            2
+        );
+
+        $this->assertSame(['queued' => 3], $res['data']);
+    }
+
+    public function test_duplicate_with_request_id_leaves_the_request_alone(): void
+    {
+        $this->requests->expects($this->never())->method('setStatus');
+
+        foreach ([null, 'skip'] as $onDuplicate) {
+            $extra = ['request_id' => 7] + ($onDuplicate ? ['on_duplicate' => $onDuplicate] : []);
+            $res = $this->controller->slskDownload($this->request($extra), 2);
+            $this->assertSame(0, $res['data']['queued']);
+        }
+    }
+
+    public function test_download_without_request_id_does_not_touch_requests(): void
+    {
+        $this->downloads->method('upsertQueued')->willReturn(1);
+        $this->requests->expects($this->never())->method('setStatus');
+
+        $this->controller->slskDownload($this->request(['artist' => 'Nadie', 'album' => 'Nada']), 2);
+    }
+
     public function test_ghost_does_not_trigger_the_warning(): void
     {
         $this->downloads->expects($this->exactly(2))->method('upsertQueued')
@@ -154,5 +191,45 @@ class SoulseekControllerTest extends TestCase
         $this->assertSame('error', $res['status']);
         $this->assertSame(400, $res['http_code']);
         $this->assertSame([], $this->slskd->enqueued);
+    }
+
+    public function test_file_without_a_folder_is_rejected(): void
+    {
+        $this->downloads->expects($this->never())->method('upsertQueued');
+
+        foreach (['x.flac', '\\x.flac'] as $filename) {
+            $res = $this->controller->slskDownload(
+                ['username' => 'peer', 'files' => [['filename' => $filename, 'size' => 1]]],
+                2
+            );
+
+            $this->assertSame('error', $res['status']);
+            $this->assertSame(400, $res['http_code']);
+        }
+        $this->assertSame([], $this->slskd->enqueued);
+    }
+
+    public function test_search_id_that_is_not_a_guid_is_rejected(): void
+    {
+        foreach (['../options', '..%2Foptions', 'abc', '12345678-1234-1234-1234-123456789012/../x'] as $id) {
+            $res = $this->controller->slskSearchResults(['search_id' => $id], 2);
+
+            $this->assertSame('error', $res['status']);
+            $this->assertSame(400, $res['http_code']);
+        }
+    }
+
+    public function test_guid_generated_by_the_client_passes_the_search_id_check(): void
+    {
+        $guid = new \ReflectionMethod(SlskdClient::class, 'guid');
+        $client = (new \ReflectionClass(SlskdClient::class))->newInstanceWithoutConstructor();
+
+        // Same pattern as SoulseekController::slskSearchResults.
+        for ($i = 0; $i < 200; $i++) {
+            $this->assertMatchesRegularExpression(
+                '/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i',
+                $guid->invoke($client)
+            );
+        }
     }
 }

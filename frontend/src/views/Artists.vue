@@ -11,7 +11,8 @@
       </div>
     </div>
     <p v-if="!loading && !lib.artists.length" class="muted">
-      No hay artistas todavía. <router-link to="/scan" style="color:var(--accent)">Escanea tu biblioteca</router-link>.
+      No hay artistas todavía.
+      <template v-if="auth.isAdmin"><router-link to="/scan" style="color:var(--accent)">Escanea tu biblioteca</router-link>.</template>
     </p>
   </div>
 </template>
@@ -20,9 +21,11 @@
 import { ref, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { useLibraryStore } from '@/store/library';
+import { useAuthStore } from '@/store/auth';
 import Icon from '@/components/Icon.vue';
 
 const lib = useLibraryStore();
+const auth = useAuthStore();
 const router = useRouter();
 const loading = ref(true);
 

@@ -34,7 +34,7 @@ class PlaybackController extends BaseController
         if (!$userId) {
             return $this->errorResponse('Authentication required.', 401);
         }
-        $ids = $this->history->recentTrackIds($userId, (int) ($data['limit'] ?? 30));
+        $ids = $this->history->recentTrackIds($userId, $this->clampLimit($data['limit'] ?? null));
         return $this->successResponse('Recently played', [
             'tracks' => $this->presenter->presentMany($this->tracks->findByIds($ids), $userId),
         ]);
@@ -45,7 +45,7 @@ class PlaybackController extends BaseController
         if (!$userId) {
             return $this->errorResponse('Authentication required.', 401);
         }
-        $most = $this->history->mostPlayed($userId, (int) ($data['limit'] ?? 30));
+        $most = $this->history->mostPlayed($userId, $this->clampLimit($data['limit'] ?? null));
         $ids = array_map(fn($r) => $r['track_id'], $most);
         $tracks = $this->presenter->presentMany($this->tracks->findByIds($ids), $userId);
         // Attach play counts by track id.
@@ -57,5 +57,12 @@ class PlaybackController extends BaseController
             $t['plays'] = $plays[$t['id']] ?? 0;
         }
         return $this->successResponse('Most played', ['tracks' => $tracks]);
+    }
+
+    /** limit = clamp((int) limit, 1, 100); sin valor, 30. */
+    private function clampLimit(mixed $raw): int
+    {
+        $limit = is_scalar($raw) ? (int) $raw : 30;
+        return max(1, min(100, $limit));
     }
 }

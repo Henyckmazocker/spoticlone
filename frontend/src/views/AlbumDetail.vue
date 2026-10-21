@@ -20,8 +20,8 @@
     </div>
 
     <div style="display:flex; gap:12px; align-items:center; margin-bottom:18px;">
-      <button v-if="album.missing" class="btn" @click="redownload">⬇ Re-descargar</button>
-      <button v-else class="btn" @click="playAll"><Icon name="play" :size="16" /> Reproducir</button>
+      <button v-if="album.missing && auth.isAdmin" class="btn" @click="redownload">⬇ Re-descargar</button>
+      <button v-else-if="!album.missing" class="btn" @click="playAll"><Icon name="play" :size="16" /> Reproducir</button>
       <button
         class="btn-ghost"
         :style="album.is_favorite ? 'color:var(--accent)' : ''"
@@ -35,10 +35,10 @@
         <option :value="''" disabled>Añadir a playlist…</option>
         <option v-for="p in playlists.playlists" :key="p.id" :value="p.id">{{ p.name }}</option>
       </select>
-      <button v-if="album.missing" class="btn-ghost" style="color:var(--danger)" @click="forgetOpen = true">
+      <button v-if="auth.isAdmin && album.missing" class="btn-ghost" style="color:var(--danger)" @click="forgetOpen = true">
         <Icon name="trash" :size="16" /> Olvidar
       </button>
-      <button v-else class="btn-ghost" style="color:var(--danger)" @click="confirmOpen = true">
+      <button v-else-if="auth.isAdmin" class="btn-ghost" style="color:var(--danger)" @click="confirmOpen = true">
         <Icon name="trash" :size="16" /> Eliminar álbum
       </button>
     </div>
@@ -69,6 +69,7 @@
 import { ref, watch, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { useLibraryStore } from '@/store/library';
+import { useAuthStore } from '@/store/auth';
 import { usePlaylistsStore } from '@/store/playlists';
 import { usePlayerStore } from '@/store/player';
 import { useFavoritesStore } from '@/store/favorites';
@@ -80,6 +81,7 @@ import Icon from '@/components/Icon.vue';
 const props = defineProps({ id: { type: [String, Number], required: true } });
 const router = useRouter();
 const lib = useLibraryStore();
+const auth = useAuthStore();
 const playlists = usePlaylistsStore();
 const player = usePlayerStore();
 const fav = useFavoritesStore();

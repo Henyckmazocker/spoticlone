@@ -53,13 +53,13 @@ class SlskdClient
     /** @return array<int, array<string, mixed>> Raw responses (one per user) for a search. */
     public function searchResponses(string $id): array
     {
-        return $this->request('GET', "/api/v0/searches/{$id}/responses");
+        return $this->request('GET', '/api/v0/searches/' . rawurlencode($id) . '/responses');
     }
 
     /** @return array<string, mixed> The search object (state, fileCount, responseCount, ...). */
     public function search(string $id): array
     {
-        return $this->request('GET', "/api/v0/searches/{$id}");
+        return $this->request('GET', '/api/v0/searches/' . rawurlencode($id));
     }
 
     /** @return array<int, array<string, mixed>> Every search slskd still holds in memory. */
@@ -74,7 +74,7 @@ class SlskdClient
      */
     public function deleteSearch(string $id): void
     {
-        $this->request('DELETE', "/api/v0/searches/{$id}");
+        $this->request('DELETE', '/api/v0/searches/' . rawurlencode($id));
     }
 
     /**

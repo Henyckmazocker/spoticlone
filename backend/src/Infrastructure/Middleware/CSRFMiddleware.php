@@ -32,7 +32,8 @@ class CSRFMiddleware implements MiddlewareInterface
         $csrfToken = $request['csrf_token'] ?? null;
 
         // Validate CSRF token
-        if (!isset($_SESSION['csrf_token']) || $csrfToken !== $_SESSION['csrf_token']) {
+        if (!isset($_SESSION['csrf_token']) || !is_string($csrfToken)
+            || !hash_equals((string) $_SESSION['csrf_token'], $csrfToken)) {
             $this->logger->warning('CSRF validation failed', [
                 'action' => $request['action'] ?? 'unknown',
                 'user_id' => $_SESSION['user_data']['id'] ?? 'unknown',

@@ -10,6 +10,10 @@ use App\Domain\Services\TrackPresenter;
 
 class PlaylistController extends BaseController
 {
+    private const MAX_TRACK_IDS = 500;
+    private const MAX_NAME = 100;
+    private const MAX_DESCRIPTION = 500;
+
     public function __construct(
         private readonly PlaylistRepositoryInterface $playlists,
         private readonly TrackRepositoryInterface $tracks,
@@ -61,6 +65,10 @@ class PlaylistController extends BaseController
         if (!$userId) {
             return $this->errorResponse('Authentication required.', 401);
         }
+        $invalid = $this->validateTextFields($data, true);
+        if ($invalid !== null) {
+            return $this->errorResponse($invalid, 400);
+        }
         $id = $this->playlists->create(
             $userId,
             (string) $data['name'],
@@ -78,6 +86,10 @@ class PlaylistController extends BaseController
         $id = (int) ($data['playlistId'] ?? $data['id'] ?? 0);
         if (!$this->playlists->findForUser($userId, $id)) {
             return $this->errorResponse('Playlist not found.', 404);
+        }
+        $invalid = $this->validateTextFields($data, false);
+        if ($invalid !== null) {
+            return $this->errorResponse($invalid, 400);
         }
         $this->playlists->update($userId, $id, $data);
         return $this->successResponse('Playlist updated');
@@ -103,6 +115,9 @@ class PlaylistController extends BaseController
             return $this->errorResponse('Playlist not found.', 404);
         }
         $trackIds = $this->trackIdsFromInput($data);
+        if ($trackIds === null) {
+            return $this->errorResponse('trackIds must be an array of 1 to ' . self::MAX_TRACK_IDS . ' ids.', 400);
+        }
         foreach ($trackIds as $trackId) {
             $this->playlists->addTrack($id, $trackId);
         }
@@ -131,20 +146,55 @@ class PlaylistController extends BaseController
         if (!$this->playlists->findForUser($userId, $id)) {
             return $this->errorResponse('Playlist not found.', 404);
         }
-        $order = array_map('intval', $data['trackIds'] ?? []);
+        $order = $this->trackIdsFromInput($data);
+        if ($order === null) {
+            return $this->errorResponse('trackIds must be an array of 1 to ' . self::MAX_TRACK_IDS . ' ids.', 400);
+        }
         $this->playlists->reorder($id, $order);
         return $this->successResponse('Playlist reordered');
     }
 
-    /** @return array<int, int> */
-    private function trackIdsFromInput(array $data): array
+    /**
+     * name: string 1..100 (obligatorio al crear); description: string 0..500.
+     * @return string|null mensaje de error, o null si es válido
+     */
+    private function validateTextFields(array $data, bool $nameRequired): ?string
     {
-        if (isset($data['trackIds']) && is_array($data['trackIds'])) {
-            return array_values(array_filter(array_map('intval', $data['trackIds'])));
+        if ($nameRequired || array_key_exists('name', $data)) {
+            $name = $data['name'] ?? null;
+            if (!is_string($name) || mb_strlen($name) < 1 || mb_strlen($name) > self::MAX_NAME) {
+                return 'name must be a string of 1 to ' . self::MAX_NAME . ' characters.';
+            }
         }
-        if (isset($data['trackId'])) {
+        if (array_key_exists('description', $data) && $data['description'] !== null) {
+            if (!is_string($data['description']) || mb_strlen($data['description']) > self::MAX_DESCRIPTION) {
+                return 'description must be a string of up to ' . self::MAX_DESCRIPTION . ' characters.';
+            }
+        }
+        return null;
+    }
+
+    /**
+     * trackIds: array de 1..500 enteros (o el `trackId` suelto de add_to_playlist).
+     * @return array<int, int>|null null si no es válido
+     */
+    private function trackIdsFromInput(array $data): ?array
+    {
+        if (isset($data['trackIds'])) {
+            $raw = $data['trackIds'];
+            if (!is_array($raw) || count($raw) < 1 || count($raw) > self::MAX_TRACK_IDS) {
+                return null;
+            }
+            foreach ($raw as $id) {
+                if (!is_int($id) && !(is_string($id) && ctype_digit($id))) {
+                    return null;
+                }
+            }
+            return array_values(array_filter(array_map('intval', $raw)));
+        }
+        if (isset($data['trackId']) && is_scalar($data['trackId'])) {
             return [(int) $data['trackId']];
         }
-        return [];
+        return null;
     }
 }

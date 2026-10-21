@@ -39,15 +39,23 @@ docker compose up --build
 **Producción** (frontend nginx estático + backend Apache `--no-dev` + MySQL propio, publicado por
 el túnel Cloudflare en `spoticlone.dcahomelab.com`):
 ```bash
-docker compose -p spoticlone_prod -f docker-compose.prod.yml up -d --build
+docker compose -p spoticlone_prod --env-file .env.prod -f docker-compose.prod.yml up -d --build
 docker network connect spoticlone_prod cloudflared      # que el túnel resuelva el frontend
 # Dashboard Cloudflare → Public Hostname: spoticlone.dcahomelab.com -> http://spoticlone-frontend-prod:80
 # Prueba local: http://localhost:8087  (puertos prod: spoticlone 8087, statCoin 8084, libraryVue 8082)
 ```
 Prod usa BD propia `spoticlone_db_prod` (arranca vacía → ejecutar "Escanear" una vez desplegado).
 nginx proxya `/api`, `/stream.php` y `/cover.php` al backend; `/stream.php` va sin buffering y
-pasa el header `Range` (206/seek). Secretos desde el `.env` raíz (`JWT_SECRET` fuerte, distinto
-del de dev: firma también las URLs de stream/cover).
+pasa el header `Range` (206/seek). Cabeceras y CSP en `docker/nginx/security_headers.conf`: hay que
+hacer `include` en cada `location` con `add_header` propio, porque nginx no lo hereda. Límites por IP:
+`/api` 10 r/s con ráfaga 30, `/stream.php` 8 conexiones, los dos con 429. La IP real depende de
+`set_real_ip_from 172.30.0.0/16`, que es la red por la que entra `cloudflared`. **Secretos de prod en `.env.prod`** (gitignorado, solo existe en
+la máquina de prod; se pasa con `--env-file`), nunca en el `.env` de dev: `JWT_SECRET` ≥32 bytes
+(`openssl rand -base64 48`; con `APP_ENV=production`, `SecretPolicy` rechaza uno corto o un
+placeholder) y firma también las URLs de stream/cover. **El repo es público**: las plantillas
+versionadas (`.env.example`, `backend/.env.docker-development`) solo llevan `CHANGE_ME`. Rotar la
+contraseña de BD exige `ALTER USER` en MySQL antes del rebuild (`MYSQL_PASSWORD` solo se aplica a un
+volumen vacío). Todos los puertos (dev 8086/8892/3311, prod 8087) se publican solo en `127.0.0.1`.
 
 **Tests (PHPUnit, dentro del contenedor backend):**
 ```bash
@@ -57,29 +65,37 @@ docker compose exec backend vendor/bin/phpunit --filter SignedUrlServiceTest
 
 **Login en dev sin Google** (JWT para un usuario existente de `users`):
 ```bash
-docker compose exec -T mysql sh -c 'mysql -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" spoticlone_db -e "SELECT id, email FROM users"'
-# elige un id de la lista y ponlo en USER_ID:
-USER_ID=2
-docker compose exec -T -e USER_ID=$USER_ID backend php -r 'require "/var/www/html/vendor/autoload.php";
+docker compose exec -T mysql sh -c 'mysql -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" spoticlone_db -e "SELECT id, email, token_version FROM users"'
+# elige un id de la lista y ponlo en USER_ID, con su token_version actual en TV:
+USER_ID=2; TV=0
+docker compose exec -T -e USER_ID=$USER_ID -e TV=$TV backend php -r 'require "/var/www/html/vendor/autoload.php";
   $_ENV["JWT_SECRET"]=getenv("JWT_SECRET");
-  echo (new App\Infrastructure\Auth\JWTService())->generate(["user_id"=>(int) getenv("USER_ID")]);'
+  echo (new App\Infrastructure\Auth\JWTService())->generate(["user_id"=>(int) getenv("USER_ID"), "tv"=>(int) getenv("TV")]);'
 ```
+El JWT debe llevar `tv` igual a `users.token_version`: `AuthenticationMiddleware` lo compara en cada
+petición y un JWT sin `tv` o con uno antiguo recibe 401. `logout` (y `UPDATE users SET
+token_version=token_version+1`) revoca todos los JWT y sesiones del usuario.
 Pégalo en "Acceso de desarrollo" del login, o úsalo como `Authorization: Bearer` con curl. La fila en
 `users` la crea el primer login con Google. **Registro abierto con tope**: cualquier cuenta de Google
 puede entrar hasta `MAX_USERS` (por defecto 10; `0` = sin límite); a partir de ahí las cuentas **nuevas**
 reciben 403 (`UserLimitReachedException` en `LoginUserUseCase`) y las existentes siguen entrando. **La sesión web** (cookie `SPOTICLONE_SESSION`, con CSRF)
 **solo la crea el login con Google**: con JWT el CSRF se salta (`auth_method=jwt`).
+**Admin** = emails de `ADMIN_EMAILS` (por comas; vacío = nadie). `AdminMiddleware` (tras
+`AuthenticationMiddleware` en `routes.php`) reserva escaneo, borrados, `issue_external_urls`, `slsk_*`
+y la cola de peticiones (`get_album_requests`, `reject_album_request`).
+`login` solo devuelve `jwt_token` con `client:'native'` (la APK); la web de prod va solo con cookie.
 
 ## Arquitectura (igual patrón que statCoin — leer eso primero ayuda)
 
 ### Backend: endpoint único + router de acciones + middleware declarativo
 - **Una sola URL** (`backend/public/index.php` → `bootstrap.php` → `App\Application::run()`).
-  Cliente manda `POST` JSON `{ "action": "...", ...payload }`. No hay rutas REST.
+  Cliente manda `POST` JSON `{ "action": "...", ...payload }`. No hay rutas REST. Sin
+  `Content-Type: application/json` responde **415**, y la acción solo se lee del body (no vale `?action=`).
 - **`config/routes.php`** = mapa maestro (acción → `[Controller, método]` + pila de middleware).
   **`ActionRouter`** ejecuta la pila y despacha con un `match($action)`. **Añadir un endpoint =
   tocar `routes.php` Y el `match`/`getController` de `ActionRouter` Y el método del controller.**
-- Middleware: `LoggingMiddleware`, `AuthenticationMiddleware` (inyecta `user_id` por sesión o
-  JWT), `CSRFMiddleware` (se salta con `auth_method=jwt`), `ValidationMiddleware`.
+- Middleware: `LoggingMiddleware`, `AuthenticationMiddleware` (inyecta `user_id` y `user` por sesión o
+  JWT; 401 si inactivo o `tv` ≠ `users.token_version`), `AdminMiddleware`, `CSRFMiddleware` (se salta con `auth_method=jwt`), `ValidationMiddleware`.
 - Controllers extienden `BaseController` y devuelven `successResponse()/errorResponse()`.
 
 ### El streaming NO pasa por el router (lo nuevo respecto a statCoin)
@@ -104,9 +120,12 @@ reciben 403 (`UserLimitReachedException` en `LoginUserUseCase`) y las existentes
 idempotencia: `tracks.file_path` (UNIQUE) + `mtime` (re-escanear no reprocesa lo no cambiado).
 Carátula por carpeta de álbum (`cover.jpg`...) o imagen embebida volcada a `storage/covers/`.
 Ignora `.afpk`, `*_spectrogram.png`, etc. Registra cada corrida en `scan_runs`.
+**Un escaneo a la vez**: `GET_LOCK('spoticlone_scan')` (completo → 409 si hay otro; el parcial del
+importador espera 120 s y si no, solo lo loguea).
 
 **Fantasmas (`missing_at` en `albums`/`tracks`).** `delete_album`/`delete_artist`
-(`MediaDeletionService`) borran los ficheros del disco pero **no las filas**: marcan `missing_at`, así
+(`MediaDeletionService`) borran del disco **las pistas del álbum** (la carpeta solo si no le queda
+audio, para no arrastrar a un álbum vecino) pero **no las filas**: marcan `missing_at`, así
 que historial, favoritos y playlists sobreviven. Solo `forget_album` (únicamente sobre fantasmas)
 borra filas con cascada. Al escanear, un fichero sin fila se **reengancha** a la pista fantasma (álbum
 por `Normalize::name` de artista+título; pista por `(disc_no, track_no)` o título) y conserva su id. El
@@ -151,6 +170,17 @@ una vez por álbum aunque lleguen CD1 y CD2), así el escaneo reengancha los mis
 **Ojo al probar en dev:** `slsk_download` sin duplicado o con `replace` encola una descarga **real** en
 slskd, y un `replace` importado borra del disco el álbum real. Pruébalo con tests o con filas de
 `downloads` sintéticas.
+**Peticiones de álbumes** (`AlbumRequestController`/`AlbumRequestService`, tablas `album_requests` +
+`album_request_users`):
+- **Usuario no admin:** pide desde Discover (`request_album {spotify_album_id}`; metadatos vía
+  `SpotifyClient::getAlbum` en el servidor; máximo 10 abiertas). Ve las suyas con
+  `get_my_album_requests` y cancela con `cancel_album_request`.
+- **Admin:** ve la cola con `get_album_requests` y lanza la descarga con
+  `slsk_download {…, request_id}`, que pasa la petición a `downloading` solo si encola. Si no se cierra
+  sola, la marca o la rechaza con `reject_album_request`.
+- **Cierre al leer:** `reconcile()` corre en los dos listados y cierra como `fulfilled` lo que
+  `LibraryMatcher` ve `present`. No está enganchado al escáner: una petición importada sigue en
+  `downloading` hasta que alguien abre la lista.
 
 ### Capa de dominio
 - `src/Domain/Repository/Music/**` define **interfaces**; `config/container.php` las mapea a las
@@ -201,7 +231,7 @@ datados en `docker/database/migrations/` aplicados a mano.
 - **Tests en el contenedor** (`docker compose exec backend composer test`); warnings hacen fallar.
 
 ## Verificación end-to-end
-1. `docker compose up --build`; `POST {"action":"ping"}` a :8892 → `pong`.
+1. `docker compose up --build`; `POST {"action":"ping"}` a :8892 (con `Content-Type: application/json`) → `pong`.
 2. Login dev (JWT) en la web (:8086) → Escanear → ver artistas/álbumes con carátula.
 3. Reproducir un FLAC: en Network, `stream.php` responde **206** con `Accept-Ranges`; el seek
    dispara nuevas peticiones Range. Navegar entre vistas no corta la música.

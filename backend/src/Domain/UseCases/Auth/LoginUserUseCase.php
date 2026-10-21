@@ -63,20 +63,23 @@ class LoginUserUseCase extends AbstractUseCase
             return $existingUser;
         }
 
-        // Registration cap: only new accounts count against MAX_USERS (<= 0 disables it)
-        if ($this->maxUsers > 0 && $this->userRepository->count() >= $this->maxUsers) {
-            throw new UserLimitReachedException('User limit reached.');
-        }
+        // Registration cap: only new accounts count against MAX_USERS (<= 0 disables it).
+        // count()+save() van bajo lock para que dos altas simultáneas no superen el tope.
+        $savedUser = $this->userRepository->withRegistrationLock(function () use ($command): User {
+            if ($this->maxUsers > 0 && $this->userRepository->count() >= $this->maxUsers) {
+                throw new UserLimitReachedException('User limit reached.');
+            }
 
-        // Create new user
-        $newUser = User::registerWithGoogle(
-            $command->googleId,
-            $command->email,
-            $command->name,
-            $command->picture
-        );
+            // Create new user
+            $newUser = User::registerWithGoogle(
+                $command->googleId,
+                $command->email,
+                $command->name,
+                $command->picture
+            );
 
-        $savedUser = $this->userRepository->save($newUser);
+            return $this->userRepository->save($newUser);
+        });
         
         $this->logAuthEvent('register', (string)$savedUser->getId());
         

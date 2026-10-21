@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Infrastructure\Middleware\AdminMiddleware;
 use App\Infrastructure\Middleware\AuthenticationMiddleware;
 use App\Infrastructure\Middleware\CSRFMiddleware;
 use App\Infrastructure\Middleware\LoggingMiddleware;
@@ -27,7 +28,7 @@ return [
     ],
     'logout' => [
         'controller' => ['AuthController', 'logout'],
-        'middleware' => [LoggingMiddleware::class],
+        'middleware' => [LoggingMiddleware::class, AuthenticationMiddleware::class],
     ],
     'check_auth' => [
         'controller' => ['AuthController', 'checkAuth'],
@@ -39,11 +40,11 @@ return [
     ],
     'log_frontend' => [
         'controller' => ['AuthController', 'logFrontend'],
-        'middleware' => [LoggingMiddleware::class],
+        'middleware' => [LoggingMiddleware::class, AuthenticationMiddleware::class],
     ],
     'log_frontend_batch' => [
         'controller' => ['AuthController', 'logFrontendBatch'],
-        'middleware' => [LoggingMiddleware::class],
+        'middleware' => [LoggingMiddleware::class, AuthenticationMiddleware::class],
     ],
     'me' => [
         'controller' => ['AuthController', 'me'],
@@ -84,23 +85,25 @@ return [
         'middleware' => [
             LoggingMiddleware::class,
             AuthenticationMiddleware::class,
+            AdminMiddleware::class,
             CSRFMiddleware::class,
             [ValidationMiddleware::class, ['required' => ['track_ids']]],
         ],
     ],
     'scan_library' => [
         'controller' => ['LibraryController', 'scanLibrary'],
-        'middleware' => [LoggingMiddleware::class, AuthenticationMiddleware::class, CSRFMiddleware::class],
+        'middleware' => [LoggingMiddleware::class, AuthenticationMiddleware::class, AdminMiddleware::class, CSRFMiddleware::class],
     ],
     'get_scan_status' => [
         'controller' => ['LibraryController', 'getScanStatus'],
-        'middleware' => [LoggingMiddleware::class, AuthenticationMiddleware::class],
+        'middleware' => [LoggingMiddleware::class, AuthenticationMiddleware::class, AdminMiddleware::class],
     ],
     'delete_album' => [
         'controller' => ['LibraryController', 'deleteAlbum'],
         'middleware' => [
             LoggingMiddleware::class,
             AuthenticationMiddleware::class,
+            AdminMiddleware::class,
             CSRFMiddleware::class,
             [ValidationMiddleware::class, ['required' => ['albumId']]],
         ],
@@ -110,6 +113,7 @@ return [
         'middleware' => [
             LoggingMiddleware::class,
             AuthenticationMiddleware::class,
+            AdminMiddleware::class,
             CSRFMiddleware::class,
             [ValidationMiddleware::class, ['required' => ['albumId']]],
         ],
@@ -119,6 +123,7 @@ return [
         'middleware' => [
             LoggingMiddleware::class,
             AuthenticationMiddleware::class,
+            AdminMiddleware::class,
             CSRFMiddleware::class,
             [ValidationMiddleware::class, ['required' => ['artistId']]],
         ],
@@ -218,6 +223,7 @@ return [
         'middleware' => [
             LoggingMiddleware::class,
             AuthenticationMiddleware::class,
+            CSRFMiddleware::class,
             [ValidationMiddleware::class, ['required' => ['trackId']]],
         ],
     ],
@@ -249,15 +255,54 @@ return [
         'controller' => ['SoulseekController', 'spotifySearch'],
         'middleware' => [LoggingMiddleware::class, AuthenticationMiddleware::class],
     ],
+    // ====================== ALBUM REQUESTS ======================
+    'request_album' => [
+        'controller' => ['AlbumRequestController', 'requestAlbum'],
+        'middleware' => [
+            LoggingMiddleware::class,
+            AuthenticationMiddleware::class,
+            CSRFMiddleware::class,
+            [ValidationMiddleware::class, ['required' => ['spotify_album_id']]],
+        ],
+    ],
+    'get_my_album_requests' => [
+        'controller' => ['AlbumRequestController', 'getMyAlbumRequests'],
+        'middleware' => [LoggingMiddleware::class, AuthenticationMiddleware::class],
+    ],
+    'cancel_album_request' => [
+        'controller' => ['AlbumRequestController', 'cancelAlbumRequest'],
+        'middleware' => [
+            LoggingMiddleware::class,
+            AuthenticationMiddleware::class,
+            CSRFMiddleware::class,
+            [ValidationMiddleware::class, ['required' => ['requestId']]],
+        ],
+    ],
+    'get_album_requests' => [
+        'controller' => ['AlbumRequestController', 'getAlbumRequests'],
+        'middleware' => [LoggingMiddleware::class, AuthenticationMiddleware::class, AdminMiddleware::class],
+    ],
+    'reject_album_request' => [
+        'controller' => ['AlbumRequestController', 'rejectAlbumRequest'],
+        'middleware' => [
+            LoggingMiddleware::class,
+            AuthenticationMiddleware::class,
+            AdminMiddleware::class,
+            CSRFMiddleware::class,
+            [ValidationMiddleware::class, ['required' => ['requestId', 'status']]],
+        ],
+    ],
+
     'slsk_search' => [
         'controller' => ['SoulseekController', 'slskSearch'],
-        'middleware' => [LoggingMiddleware::class, AuthenticationMiddleware::class],
+        'middleware' => [LoggingMiddleware::class, AuthenticationMiddleware::class, AdminMiddleware::class],
     ],
     'slsk_search_results' => [
         'controller' => ['SoulseekController', 'slskSearchResults'],
         'middleware' => [
             LoggingMiddleware::class,
             AuthenticationMiddleware::class,
+            AdminMiddleware::class,
             [ValidationMiddleware::class, ['required' => ['search_id']]],
         ],
     ],
@@ -266,6 +311,7 @@ return [
         'middleware' => [
             LoggingMiddleware::class,
             AuthenticationMiddleware::class,
+            AdminMiddleware::class,
             CSRFMiddleware::class,
             // on_duplicate (opcional, replace|skip): ValidationMiddleware solo sabe 'required',
             // así que el enum se valida en SoulseekController::slskDownload (400).
@@ -274,13 +320,14 @@ return [
     ],
     'slsk_downloads' => [
         'controller' => ['SoulseekController', 'slskDownloads'],
-        'middleware' => [LoggingMiddleware::class, AuthenticationMiddleware::class],
+        'middleware' => [LoggingMiddleware::class, AuthenticationMiddleware::class, AdminMiddleware::class],
     ],
     'slsk_remove_downloads' => [
         'controller' => ['SoulseekController', 'slskRemoveDownloads'],
         'middleware' => [
             LoggingMiddleware::class,
             AuthenticationMiddleware::class,
+            AdminMiddleware::class,
             CSRFMiddleware::class,
             [ValidationMiddleware::class, ['required' => ['ids']]],
         ],
@@ -290,6 +337,7 @@ return [
         'middleware' => [
             LoggingMiddleware::class,
             AuthenticationMiddleware::class,
+            AdminMiddleware::class,
             CSRFMiddleware::class,
             [ValidationMiddleware::class, ['required' => ['id']]],
         ],
@@ -299,6 +347,7 @@ return [
         'middleware' => [
             LoggingMiddleware::class,
             AuthenticationMiddleware::class,
+            AdminMiddleware::class,
             CSRFMiddleware::class,
             [ValidationMiddleware::class, ['required' => ['id']]],
         ],

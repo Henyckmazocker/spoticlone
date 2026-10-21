@@ -12,6 +12,7 @@ use App\Domain\Services\AlbumPresenter;
 use App\Domain\Services\LibraryScanner;
 use App\Domain\Services\MediaDeletionService;
 use App\Domain\Services\RecommendationService;
+use App\Domain\Services\ScanInProgressException;
 use App\Domain\Services\TrackPresenter;
 use App\Infrastructure\Auth\SignedUrlService;
 use App\Infrastructure\Music\MetadataEnrichmentService;
@@ -249,7 +250,11 @@ class LibraryController extends BaseController
         }
         // Long-running: allow more time than the default request budget.
         @set_time_limit(0);
-        $stats = $this->scanner->scan();
+        try {
+            $stats = $this->scanner->scan();
+        } catch (ScanInProgressException $e) {
+            return $this->errorResponse('Ya hay un escaneo en curso.', 409);
+        }
         $stats['similar_warmed'] = 0;
 
         // Best-effort: fill missing covers from Last.fm/Spotify and warm similar artists (no-op without API keys).

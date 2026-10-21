@@ -35,6 +35,7 @@ class LoginUserLimitTest extends TestCase
         $repo = $this->createMock(UserRepositoryInterface::class);
         $repo->method('findByGoogleId')->willReturn(null);
         $repo->method('count')->willReturn(10);
+        $repo->method('withRegistrationLock')->willReturnCallback(fn(callable $fn) => $fn());
         $repo->expects($this->never())->method('save');
 
         $this->expectException(UserLimitReachedException::class);
@@ -47,6 +48,7 @@ class LoginUserLimitTest extends TestCase
         $repo = $this->createMock(UserRepositoryInterface::class);
         $repo->method('findByGoogleId')->willReturn(null);
         $repo->method('count')->willReturn(2);
+        $repo->method('withRegistrationLock')->willReturnCallback(fn(callable $fn) => $fn());
         $repo->expects($this->once())->method('save')->willReturnArgument(0);
 
         $user = (new LoginUserUseCase($repo, new NullLogger()))->execute($this->command());
@@ -74,8 +76,47 @@ class LoginUserLimitTest extends TestCase
         $repo = $this->createMock(UserRepositoryInterface::class);
         $repo->method('findByGoogleId')->willReturn(null);
         $repo->method('count')->willReturn(1000);
+        $repo->method('withRegistrationLock')->willReturnCallback(fn(callable $fn) => $fn());
         $repo->expects($this->once())->method('save')->willReturnArgument(0);
 
+        (new LoginUserUseCase($repo, new NullLogger()))->execute($this->command());
+    }
+
+    public function test_count_and_save_run_inside_the_registration_lock(): void
+    {
+        $_ENV['MAX_USERS'] = '3';
+        $events = [];
+        $repo = $this->createMock(UserRepositoryInterface::class);
+        $repo->method('findByGoogleId')->willReturn(null);
+        $repo->method('withRegistrationLock')->willReturnCallback(function (callable $fn) use (&$events) {
+            $events[] = 'lock';
+            try {
+                return $fn();
+            } finally {
+                $events[] = 'unlock';
+            }
+        });
+        $repo->method('count')->willReturnCallback(function () use (&$events) {
+            $events[] = 'count';
+            return 0;
+        });
+        $repo->method('save')->willReturnCallback(function (User $u) use (&$events) {
+            $events[] = 'save';
+            return $u;
+        });
+
+        (new LoginUserUseCase($repo, new NullLogger()))->execute($this->command());
+        $this->assertSame(['lock', 'count', 'save', 'unlock'], $events);
+    }
+
+    public function test_registration_aborts_when_the_lock_is_not_obtained(): void
+    {
+        $repo = $this->createMock(UserRepositoryInterface::class);
+        $repo->method('findByGoogleId')->willReturn(null);
+        $repo->method('withRegistrationLock')->willThrowException(new \RuntimeException('no lock'));
+        $repo->expects($this->never())->method('save');
+
+        $this->expectException(\RuntimeException::class);
         (new LoginUserUseCase($repo, new NullLogger()))->execute($this->command());
     }
 }

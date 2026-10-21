@@ -11,11 +11,11 @@ const routes = [
   { path: '/album/:id', name: 'album', component: () => import('@/views/AlbumDetail.vue'), props: true },
   { path: '/search', name: 'search', component: () => import('@/views/Search.vue') },
   { path: '/discover', name: 'discover', component: () => import('@/views/Discover.vue') },
-  { path: '/descargas', name: 'downloads', component: () => import('@/views/Downloads.vue') },
+  { path: '/descargas', name: 'downloads', component: () => import('@/views/Downloads.vue'), meta: { admin: true } },
   { path: '/playlists', name: 'playlists', component: () => import('@/views/Playlists.vue') },
   { path: '/playlist/:id', name: 'playlist', component: () => import('@/views/PlaylistDetail.vue'), props: true },
   { path: '/favorites', name: 'favorites', component: () => import('@/views/Favorites.vue') },
-  { path: '/scan', name: 'scan', component: () => import('@/views/AdminScan.vue') },
+  { path: '/scan', name: 'scan', component: () => import('@/views/AdminScan.vue'), meta: { admin: true } },
   { path: '/:pathMatch(.*)*', redirect: '/home' }
 ];
 
@@ -32,6 +32,9 @@ router.beforeEach(async (to) => {
   }
   if (!to.meta.public && !auth.isAuthenticated) {
     return { name: 'login' };
+  }
+  if (to.meta.admin && !auth.isAdmin) {
+    return { name: 'home' };
   }
   if (to.name === 'login' && auth.isAuthenticated) {
     return { name: 'home' };

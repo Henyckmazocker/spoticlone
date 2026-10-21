@@ -14,11 +14,26 @@ class MySqlScanRepository implements ScanRepositoryInterface
     use LoggableTrait;
 
     private const TABLE = 'scan_runs';
+    private const LOCK_NAME = 'spoticlone_scan';
 
     public function __construct(
         private readonly PDO $db,
         private readonly ?LoggerInterface $logger = null
     ) {}
+
+    public function acquireLock(int $timeoutSeconds): bool
+    {
+        $stmt = $this->db->prepare('SELECT GET_LOCK(:name, :t)');
+        $stmt->execute(['name' => self::LOCK_NAME, 't' => max(0, $timeoutSeconds)]);
+        return (int) $stmt->fetchColumn() === 1;
+    }
+
+    public function releaseLock(): void
+    {
+        $stmt = $this->db->prepare('SELECT RELEASE_LOCK(:name)');
+        $stmt->execute(['name' => self::LOCK_NAME]);
+        $stmt->fetchColumn();
+    }
 
     public function start(): int
     {

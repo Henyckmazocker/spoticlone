@@ -25,13 +25,15 @@ use RecursiveIteratorIterator;
  */
 class LibraryScanner
 {
-    private const AUDIO_EXTS = ['mp3', 'flac', 'ogg', 'm4a', 'wav', 'opus', 'aac', 'wma'];
+    public const AUDIO_EXTS = ['mp3', 'flac', 'ogg', 'm4a', 'wav', 'opus', 'aac', 'wma'];
     private const COVER_NAMES = ['cover.jpg', 'cover.jpeg', 'cover.png', 'folder.jpg', 'folder.png', 'front.jpg', 'front.png'];
     /**
      * The prune is aborted entirely when it would turn more than this share of the live tracks
      * into ghosts: that looks like an unmounted disk or an empty bind-mount, not real deletions.
      */
     private const PRUNE_MAX_RATIO = 0.2;
+    /** Seconds a partial scan waits for the scan lock (the full scan does not wait). */
+    private const PARTIAL_LOCK_TIMEOUT = 120;
 
     private string $musicRoot;
     private string $coversPath;
@@ -65,6 +67,21 @@ class LibraryScanner
      * @return array{run_id:int, files_seen:int, tracks_added:int, tracks_updated:int, errors:int, tracks_missing:int}
      */
     public function scan(?string $onlyPath = null): array
+    {
+        // Full scan fails fast; a partial one (after an import) waits for the running scan to end.
+        // The lock is taken BEFORE start() so a refused scan leaves no `running` row behind.
+        if (!$this->scans->acquireLock($onlyPath === null ? 0 : self::PARTIAL_LOCK_TIMEOUT)) {
+            throw new ScanInProgressException('Ya hay un escaneo en curso.');
+        }
+        try {
+            return $this->runScan($onlyPath);
+        } finally {
+            $this->scans->releaseLock();
+        }
+    }
+
+    /** @return array{run_id:int, files_seen:int, tracks_added:int, tracks_updated:int, errors:int, tracks_missing:int} */
+    private function runScan(?string $onlyPath): array
     {
         $runId = $this->scans->start();
         $stats = ['files_seen' => 0, 'tracks_added' => 0, 'tracks_updated' => 0, 'errors' => 0, 'tracks_missing' => 0];

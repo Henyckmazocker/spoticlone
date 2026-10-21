@@ -11,11 +11,13 @@ namespace App\Infrastructure\Auth;
  * access grant travels in the URL query string instead. The token is a compact HMAC-signed blob
  * (no DB state): "<base64url(payload)>.<base64url(hmac)>". Payload = {k:kind, id, uid, exp}.
  *
- * Signed with JWT_SECRET so it shares the app's single secret. NOT a JWT (kept tiny on purpose).
+ * Signed with a key derived from JWT_SECRET (HMAC of a fixed context label), so it never signs
+ * with the raw secret that JWTService uses. NOT a JWT (kept tiny on purpose).
  */
 class SignedUrlService
 {
     private string $secret;
+    private string $key;
     private int $defaultTtl;
     private string $publicBaseUrl;
     private int $externalMaxTtl;
@@ -23,6 +25,9 @@ class SignedUrlService
     public function __construct()
     {
         $this->secret = $_ENV['JWT_SECRET'] ?? '';
+        SecretPolicy::assertStrong($this->secret);
+        // Domain-separated key: a JWT_SECRET-signed JWT/blob can never double as a URL signature.
+        $this->key = hash_hmac('sha256', 'spoticlone:signed-url:v1', $this->secret, true);
         $this->defaultTtl = (int) ($_ENV['STREAM_URL_TTL'] ?? 3600);
         $this->publicBaseUrl = rtrim((string) ($_ENV['PUBLIC_BASE_URL'] ?? ''), '/');
         $maxTtl = (int) ($_ENV['EXTERNAL_URL_MAX_TTL'] ?? 86400);
@@ -124,7 +129,7 @@ class SignedUrlService
 
     private function hmac(string $body): string
     {
-        return hash_hmac('sha256', $body, $this->secret, true);
+        return hash_hmac('sha256', $body, $this->key, true);
     }
 
     private function b64(string $raw): string

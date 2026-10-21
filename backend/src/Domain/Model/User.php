@@ -22,6 +22,7 @@ class User
     private bool $isActive;
     private ?string $lastfmUsername;
     private ?string $username;
+    private int $tokenVersion;
 
     public function __construct(
         ?int $id,
@@ -35,7 +36,8 @@ class User
         ?array $preferences = null,
         bool $isActive = true,
         ?string $lastfmUsername = null,
-        ?string $username = null
+        ?string $username = null,
+        int $tokenVersion = 0
     ) {
         $this->id = $id;
         $this->googleId = $googleId;
@@ -49,6 +51,7 @@ class User
         $this->isActive = $isActive;
         $this->lastfmUsername = $lastfmUsername;
         $this->username = $username;
+        $this->tokenVersion = $tokenVersion;
     }
 
     // Getters
@@ -64,6 +67,7 @@ class User
     public function isActive(): bool { return $this->isActive; }
     public function getLastFmUsername(): ?string { return $this->lastfmUsername; }
     public function getUsername(): ?string { return $this->username; }
+    public function getTokenVersion(): int { return $this->tokenVersion; }
 
     // Setters with validation
     public function setGoogleId(GoogleId $googleId): void
@@ -174,6 +178,22 @@ class User
         ];
     }
 
+    /**
+     * Shape exposed to API clients (PublicUser). No google_id, preferences, last_login or
+     * timestamps. `is_admin` is not a model property: the controller adds it via AdminPolicy.
+     */
+    public function toPublicArray(): array
+    {
+        return [
+            'id' => $this->id,
+            'email' => $this->email->toString(),
+            'name' => $this->name,
+            'picture' => $this->picture,
+            'lastfm_username' => $this->lastfmUsername,
+            'username' => $this->username,
+        ];
+    }
+
     public static function fromArray(array $data): self
     {
         return new self(
@@ -188,7 +208,8 @@ class User
             $data['preferences'] ?? null,
             $data['is_active'] ?? true,
             $data['lastfm_username'] ?? null,
-            $data['username'] ?? null
+            $data['username'] ?? null,
+            (int) ($data['token_version'] ?? 0)
         );
     }
 }

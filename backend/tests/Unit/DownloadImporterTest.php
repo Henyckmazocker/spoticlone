@@ -185,6 +185,54 @@ class DownloadImporterTest extends TestCase
         $this->assertFileExists($this->downloads . '/Dup/a.flac');
     }
 
+    public function test_discard_refuses_the_downloads_root(): void
+    {
+        mkdir($this->downloads . '/Some Album', 0775, true);
+        file_put_contents($this->downloads . '/Some Album/01.flac', 'data');
+        $importer = $this->makeImporter();
+
+        foreach (['.', '', '/'] as $rel) {
+            $this->assertFalse($importer->discard($rel), "discard('$rel')");
+        }
+        $this->assertFileExists($this->downloads . '/Some Album/01.flac');
+        $this->assertDirectoryExists($this->downloads);
+    }
+
+    public function test_import_refuses_the_downloads_root(): void
+    {
+        mkdir($this->downloads . '/Some Album', 0775, true);
+        file_put_contents($this->downloads . '/Some Album/01.flac', 'data');
+
+        try {
+            $this->makeImporter()->import('.', 'The Artist');
+            $this->fail('Se esperaba una RuntimeException');
+        } catch (\RuntimeException $e) {
+            $this->assertFileExists($this->downloads . '/Some Album/01.flac');
+            $this->assertSame([], $this->scanned);
+        }
+    }
+
+    public function test_sanitize_turns_dots_into_the_default_name(): void
+    {
+        $sanitize = new \ReflectionMethod(DownloadImporter::class, 'sanitize');
+        $importer = $this->makeImporter();
+
+        $this->assertSame('Soulseek', $sanitize->invoke($importer, '..'));
+        $this->assertSame('Soulseek', $sanitize->invoke($importer, ' . '));
+        $this->assertSame('Vol', $sanitize->invoke($importer, 'Vol.'));
+    }
+
+    public function test_dotdot_album_lands_in_the_default_folder(): void
+    {
+        mkdir($this->downloads . '/Some Album', 0775, true);
+        file_put_contents($this->downloads . '/Some Album/01.flac', 'data');
+
+        $res = $this->makeImporter()->import('Some Album', 'The Artist', '..');
+
+        $this->assertSame($this->music . '/The Artist/Soulseek', $res['moved_to']);
+        $this->assertFileExists($this->music . '/The Artist/Soulseek/01.flac');
+    }
+
     private function rrmdir(string $dir): void
     {
         if (!is_dir($dir)) return;

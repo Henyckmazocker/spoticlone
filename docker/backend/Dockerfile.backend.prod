@@ -19,7 +19,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
 # Composer
-COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
+COPY --from=composer:2.10.3 /usr/bin/composer /usr/bin/composer
 
 # Apache: rewrite/headers + servir desde public/
 RUN a2enmod rewrite headers \
@@ -34,6 +34,15 @@ RUN composer install --no-dev --optimize-autoloader --no-interaction --prefer-di
 RUN mkdir -p storage/logs storage/cache storage/sessions storage/uploads \
     && chown -R www-data:www-data /var/www/html \
     && chmod -R 775 storage/
+
+# Huella mínima (sin versiones de PHP/Apache) y IP real del cliente: nginx manda X-Real-IP y
+# mod_remoteip lo toma como REMOTE_ADDR solo si viene de la red Docker (172.16.0.0/12).
+RUN echo "expose_php = Off" > /usr/local/etc/php/conf.d/zz-security.ini \
+ && printf "ServerTokens Prod\nServerSignature Off\n" > /etc/apache2/conf-available/zz-security.conf \
+ && a2enconf zz-security \
+ && a2enmod remoteip \
+ && printf "RemoteIPHeader X-Real-IP\nRemoteIPInternalProxy 172.16.0.0/12\n" > /etc/apache2/conf-available/remoteip.conf \
+ && a2enconf remoteip
 
 # PHP producción
 RUN { \

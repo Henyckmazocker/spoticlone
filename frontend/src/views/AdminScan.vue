@@ -40,7 +40,7 @@ async function scan() {
   try {
     result.value = await lib.scanLibrary();
   } catch (e) {
-    result.value = { files_seen: 0, tracks_added: 0, tracks_updated: 0, errors: 1, message: e.message };
+    result.value = { files_seen: 0, tracks_added: 0, tracks_updated: 0, errors: 1, message: e.response?.status === 409 ? 'Ya hay un escaneo en curso' : e.message };
   } finally {
     scanning.value = false;
   }

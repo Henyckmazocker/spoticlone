@@ -14,7 +14,7 @@
     "@capacitor/core": "^6.1.0",
     "@codetrix-studio/capacitor-google-auth": "^3.4.0-rc.4",
     "@jofr/capacitor-media-session": "^4.0.0",
-    "axios": "^1.7.0",
+    "axios": "^1.20.0",
     "core-js": "^3.38.0",
     "pinia": "^2.2.0",
     "vue": "^3.5.0",

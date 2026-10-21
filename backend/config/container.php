@@ -44,6 +44,7 @@ return function (): ContainerInterface {
         // ===========================
         \App\Infrastructure\Middleware\AuthMiddleware::class => DI\autowire(),
         \App\Infrastructure\Middleware\AuthenticationMiddleware::class => DI\autowire(),
+        \App\Infrastructure\Middleware\AdminMiddleware::class => DI\autowire(),
         \App\Infrastructure\Middleware\LoggingMiddleware::class => DI\autowire(),
         \App\Infrastructure\Middleware\CSRFMiddleware::class => DI\autowire(),
         \App\Infrastructure\Middleware\ValidationMiddleware::class => DI\autowire(),
@@ -76,6 +77,8 @@ return function (): ContainerInterface {
             => DI\get(\App\Infrastructure\Persistence\Music\MySqlScanRepository::class),
         \App\Domain\Repository\Music\DownloadRepositoryInterface::class
             => DI\get(\App\Infrastructure\Persistence\Music\MySqlDownloadRepository::class),
+        \App\Domain\Repository\Music\AlbumRequestRepositoryInterface::class
+            => DI\get(\App\Infrastructure\Persistence\Music\MySqlAlbumRequestRepository::class),
 
         \App\Infrastructure\Persistence\User\MySqlUserRepository::class => DI\autowire(),
         \App\Infrastructure\Persistence\Music\MySqlArtistRepository::class => DI\autowire(),
@@ -87,6 +90,7 @@ return function (): ContainerInterface {
         \App\Infrastructure\Persistence\Music\MySqlPlayHistoryRepository::class => DI\autowire(),
         \App\Infrastructure\Persistence\Music\MySqlScanRepository::class => DI\autowire(),
         \App\Infrastructure\Persistence\Music\MySqlDownloadRepository::class => DI\autowire(),
+        \App\Infrastructure\Persistence\Music\MySqlAlbumRequestRepository::class => DI\autowire(),
 
         // ===========================
         // DOMAIN SERVICES
@@ -94,6 +98,7 @@ return function (): ContainerInterface {
         \App\Domain\Services\LibraryScanner::class => DI\autowire(),
         \App\Domain\Services\MediaDeletionService::class => DI\autowire(),
         \App\Domain\Services\LibraryMatcher::class => DI\autowire(),
+        \App\Domain\Services\AlbumRequestService::class => DI\autowire(),
         \App\Domain\Services\TrackPresenter::class => DI\autowire(),
         \App\Domain\Services\AlbumPresenter::class => DI\autowire(),
         \App\Domain\Services\DownloadImporter::class => DI\autowire(),
@@ -120,6 +125,7 @@ return function (): ContainerInterface {
         \App\Controllers\PlaybackController::class => DI\autowire(),
         \App\Controllers\RecommendationController::class => DI\autowire(),
         \App\Controllers\SoulseekController::class => DI\autowire(),
+        \App\Controllers\AlbumRequestController::class => DI\autowire(),
 
         // ===========================
         // ROUTER

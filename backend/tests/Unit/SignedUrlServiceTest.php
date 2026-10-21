@@ -9,14 +9,23 @@ use PHPUnit\Framework\TestCase;
 
 class SignedUrlServiceTest extends TestCase
 {
+    private ?string $appEnvBackup = null;
+
     protected function setUp(): void
     {
         $_ENV['JWT_SECRET'] = 'test-secret-at-least-32-characters-long!!';
         $_ENV['STREAM_URL_TTL'] = '3600';
+        $this->appEnvBackup = $_ENV['APP_ENV'] ?? null;
+        $_ENV['APP_ENV'] = 'production';
     }
 
     protected function tearDown(): void
     {
+        if ($this->appEnvBackup === null) {
+            unset($_ENV['APP_ENV']);
+        } else {
+            $_ENV['APP_ENV'] = $this->appEnvBackup;
+        }
         // Don't leak the external-URL settings into other tests.
         unset($_ENV['PUBLIC_BASE_URL'], $_ENV['EXTERNAL_URL_MAX_TTL']);
     }
@@ -106,5 +115,35 @@ class SignedUrlServiceTest extends TestCase
         $this->assertFalse($svc->hasPublicBaseUrl());
         $this->expectException(\RuntimeException::class);
         $svc->externalUrl(1, 1, 60);
+    }
+
+    public function test_short_secret_in_production_throws(): void
+    {
+        $_ENV['JWT_SECRET'] = 'too-short';
+
+        $this->expectException(\RuntimeException::class);
+        new SignedUrlService();
+    }
+
+    public function test_empty_secret_outside_production_fails_closed(): void
+    {
+        $_ENV['JWT_SECRET'] = '';
+        $_ENV['APP_ENV'] = 'development';
+        $svc = new SignedUrlService();
+
+        $this->assertNull($svc->verify($svc->sign('stream', 1, 1)));
+    }
+
+    public function test_token_signed_with_raw_secret_is_rejected(): void
+    {
+        // Old scheme: HMAC keyed directly with JWT_SECRET (no derived key).
+        $body = rtrim(strtr(base64_encode(json_encode([
+            'k' => 'stream', 'id' => 1, 'uid' => 1, 'exp' => time() + 60,
+        ])), '+/', '-_'), '=');
+        $sig = rtrim(strtr(base64_encode(
+            hash_hmac('sha256', $body, $_ENV['JWT_SECRET'], true)
+        ), '+/', '-_'), '=');
+
+        $this->assertNull((new SignedUrlService())->verify($body . '.' . $sig));
     }
 }

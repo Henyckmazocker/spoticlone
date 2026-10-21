@@ -26,7 +26,7 @@
       📱 Descargar la app para Android
     </a>
 
-    <details class="dev-login">
+    <details v-if="isDev" class="dev-login">
       <summary class="muted">Acceso de desarrollo (token JWT)</summary>
       <p class="muted" style="font-size:12px; margin:10px 0;">
         Pega un JWT firmado con <code>JWT_SECRET</code> (campo <code>user_id</code>) para probar en local sin Google.
@@ -52,6 +52,7 @@ const error = ref('');
 const devToken = ref('');
 const googleClientId = process.env.VUE_APP_GOOGLE_CLIENT_ID || '';
 const isNative = Capacitor.isNativePlatform();
+const isDev = process.env.NODE_ENV !== 'production';
 
 async function loginNative() {
   error.value = '';
@@ -66,9 +67,9 @@ async function loginNative() {
   }
 }
 
-function loginDev() {
+async function loginDev() {
   try {
-    auth.loginWithToken(devToken.value.trim());
+    await auth.loginWithToken(devToken.value.trim());
     router.push('/home');
   } catch (e) {
     error.value = e.message;

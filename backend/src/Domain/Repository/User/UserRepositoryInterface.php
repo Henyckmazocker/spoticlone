@@ -37,6 +37,16 @@ interface UserRepositoryInterface
     public function count(): int;
 
     /**
+     * Ejecuta $fn bajo un lock global de registro (serializa count()+save() del tope MAX_USERS).
+     * Si no se obtiene el lock lanza RuntimeException en vez de registrar sin él.
+     *
+     * @template T
+     * @param callable(): T $fn
+     * @return T
+     */
+    public function withRegistrationLock(callable $fn): mixed;
+
+    /**
      * Guarda un nuevo usuario
      */
     public function save(User $user): User;
@@ -50,6 +60,11 @@ interface UserRepositoryInterface
      * Elimina un usuario (soft delete)
      */
     public function delete(int $id): void;
+
+    /**
+     * Incrementa token_version: invalida todos los JWT y sesiones emitidos antes
+     */
+    public function incrementTokenVersion(int $id): void;
 
     /**
      * Busca un usuario por su username único

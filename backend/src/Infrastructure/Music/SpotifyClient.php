@@ -92,6 +92,31 @@ class SpotifyClient
         }
     }
 
+    /**
+     * One album by Spotify id in the same shape as search(), or null if the id is malformed,
+     * unknown or the lookup fails. (Album requests re-fetch the metadata instead of trusting the client.)
+     */
+    public function getAlbum(string $id): ?array
+    {
+        if (!$this->isEnabled() || !preg_match('/^[A-Za-z0-9]{1,64}$/', $id)) {
+            return null;
+        }
+        $token = $this->token();
+        if ($token === null) {
+            return null;
+        }
+        try {
+            $res = $this->http->get('https://api.spotify.com/v1/albums/' . $id, [
+                'headers' => ['Authorization' => 'Bearer ' . $token],
+            ]);
+            $data = json_decode((string) $res->getBody(), true);
+            return is_array($data) && !empty($data['id']) ? $this->mapAlbum($data) : null;
+        } catch (\Throwable $e) {
+            $this->logger?->debug('Spotify album lookup failed', ['error' => $e->getMessage()]);
+            return null;
+        }
+    }
+
     private function mapAlbum(array $a): array
     {
         return [

@@ -137,6 +137,25 @@ class MySqlUserRepository implements UserRepositoryInterface
         return (int) $this->db->query("SELECT COUNT(*) FROM " . self::TABLE)->fetchColumn();
     }
 
+    /**
+     * @inheritDoc
+     */
+    public function withRegistrationLock(callable $fn): mixed
+    {
+        $stmt = $this->db->prepare('SELECT GET_LOCK(:name, 5)');
+        $stmt->execute(['name' => 'spoticlone_register']);
+        if ((int) $stmt->fetchColumn() !== 1) {
+            throw new \RuntimeException('Could not acquire the registration lock.');
+        }
+        try {
+            return $fn();
+        } finally {
+            $release = $this->db->prepare('SELECT RELEASE_LOCK(:name)');
+            $release->execute(['name' => 'spoticlone_register']);
+            $release->fetchColumn();
+        }
+    }
+
     public function save(User $user): User
     {
         try {
@@ -236,6 +255,23 @@ class MySqlUserRepository implements UserRepositoryInterface
             $this->logError('Failed to delete user', $e, [
                 'user_id' => $id
             ]);
+            throw $e;
+        }
+    }
+
+    /**
+     * @inheritDoc
+     */
+    public function incrementTokenVersion(int $id): void
+    {
+        try {
+            $stmt = $this->db->prepare(
+                "UPDATE " . self::TABLE . " SET token_version = token_version + 1 WHERE id = :id"
+            );
+            $stmt->execute(['id' => $id]);
+            $this->logInfo('User token_version incremented', ['user_id' => $id]);
+        } catch (PDOException $e) {
+            $this->logError('Failed to increment token_version', $e, ['user_id' => $id]);
             throw $e;
         }
     }

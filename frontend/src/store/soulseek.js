@@ -52,9 +52,10 @@ export const useSoulseekStore = defineStore('soulseek', {
      * Devuelve la respuesta del backend: `{queued}`, `{queued:0, duplicate:{album_id,title,artist}}`
      * si el álbum ya está en la biblioteca y no se dijo qué hacer, o `{queued:0, skipped:true}`.
      * @param {'replace'|'skip'|null} onDuplicate decisión ya tomada para este álbum
+     * @param {number|null} requestId petición de álbum que origina la descarga (pasa a `downloading` si se encola)
      */
-    async download({ username, files, artist, album, onDuplicate = null }) {
-      const r = await apiCall('slsk_download', { username, files, artist, album, on_duplicate: onDuplicate });
+    async download({ username, files, artist, album, onDuplicate = null, requestId = null }) {
+      const r = await apiCall('slsk_download', { username, files, artist, album, on_duplicate: onDuplicate, request_id: requestId });
       // Si se encoló algo, el backend ya ha registrado las filas: refrescar deja Descargas al día.
       if (r?.queued > 0) {
         await this.refreshDownloads();

@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace App\Infrastructure\Middleware;
 
+use App\Domain\Repository\User\UserRepositoryInterface;
 use App\Infrastructure\Auth\JWTService;
+use App\Infrastructure\Session\SessionManager;
 use Psr\Log\LoggerInterface;
 
 /**
@@ -18,13 +20,16 @@ class AuthenticationMiddleware implements MiddlewareInterface
 {
     public function __construct(
         private readonly LoggerInterface $logger,
-        private readonly JWTService $jwtService
+        private readonly JWTService $jwtService,
+        private readonly UserRepositoryInterface $users,
+        private readonly SessionManager $sessionManager
     ) {}
 
     public function handle(array $request, callable $next): array
     {
         $userId = null;
         $authMethod = null;
+        $payload = null;
 
         // --- 1. Session-based auth (web) ---
         if (isset($_SESSION['user_data']['id'])) {
@@ -59,7 +64,25 @@ class AuthenticationMiddleware implements MiddlewareInterface
             return ['status' => 'error', 'message' => 'Authentication required. Please log in.', 'http_code' => 401];
         }
 
+        // Carga el usuario y comprueba que sigue activo y que la versión de token coincide.
+        $user = $this->users->findById($userId);
+        $tv = $authMethod === 'jwt'
+            ? (int) ($payload['tv'] ?? -1)
+            : (int) ($_SESSION['user_data']['tv'] ?? -1);
+        if (!$user || !$user->isActive() || $tv !== $user->getTokenVersion()) {
+            $this->logger->warning('Authentication failed - revoked, inactive or unknown user', [
+                'user_id' => $userId,
+                'method'  => $authMethod,
+                'action'  => $request['action'] ?? 'unknown',
+            ]);
+            if ($authMethod === 'session') {
+                $this->sessionManager->logout();
+            }
+            return ['status' => 'error', 'message' => 'Authentication required. Please log in.', 'http_code' => 401];
+        }
+
         $request['user_id'] = $userId;
+        $request['user'] = $user;
         $request['auth_method'] = $authMethod;
         if ($authMethod === 'jwt') {
             $this->logger->debug('User authenticated via JWT', [
