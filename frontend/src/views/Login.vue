@@ -21,6 +21,11 @@
     <!-- Web: botón renderizado por Google Identity Services -->
     <div v-else-if="googleClientId" id="google-btn" class="center" style="margin: 18px 0;"></div>
 
+    <!-- Descarga de la APK: fichero estático (no ruta de la SPA); dentro de la app no tiene sentido -->
+    <a v-if="!isNative" class="btn-ghost" style="width:100%; justify-content:center; margin-bottom:14px;" href="/app/spoticlone.apk" download>
+      📱 Descargar la app para Android
+    </a>
+
     <details class="dev-login">
       <summary class="muted">Acceso de desarrollo (token JWT)</summary>
       <p class="muted" style="font-size:12px; margin:10px 0;">

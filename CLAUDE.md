@@ -174,6 +174,12 @@ slskd, y un `replace` importado borra del disco el álbum real. Pruébalo con te
 - `src/services/api.js`: `apiCall(action, payload)` (single endpoint) + `resolveUrl()` que
   resuelve las rutas firmadas relativas (web same-origin) o absolutas (Capacitor prod).
 - `createWebHashHistory` (web y webview). Guard global exige auth salvo rutas `public`.
+- **Descarga de la APK**: la web enlaza `/app/spoticlone.apk` (login, sidebar y cabecera móvil; oculto si
+  `Capacitor.isNativePlatform()`). El fichero vive en `frontend/public/app/` (gitignoreado, entra en la
+  imagen prod por el build context) y se copia a mano tras compilar
+  (`android/app/build/outputs/apk/…/*.apk`). Como la app carga la web remota (`server.url` en prod),
+  solo hace falta recompilarla si cambia lo nativo (plugins, icono, client ID). `build:mobile` borra
+  `dist/app` para que la APK no se meta a sí misma.
 
 ### Base de datos
 Esquema en `docker/database/init.sql` (corre solo en BD virgen). Cambios posteriores → archivos

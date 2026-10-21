@@ -5,7 +5,7 @@
   "scripts": {
     "serve": "vue-cli-service serve",
     "build": "vue-cli-service build",
-    "build:mobile": "cross-env VUE_APP_MODE=mobile CAP_ENV=production vue-cli-service build && cross-env CAP_ENV=production npx cap sync android",
+    "build:mobile": "cross-env VUE_APP_MODE=mobile CAP_ENV=production vue-cli-service build && node -e \"require('fs').rmSync('dist/app',{recursive:true,force:true})\" && cross-env CAP_ENV=production npx cap sync android",
     "cap:sync": "npx cap sync",
     "cap:sync:mobile": "cross-env CAP_ENV=production npx cap sync android",
     "cap:android": "npx cap open android"

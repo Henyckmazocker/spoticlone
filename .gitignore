@@ -35,3 +35,6 @@ google-services.json
 .idea/
 !frontend/android/.idea/
 .vscode/
+
+# APK de Android servida por la web (se copia a mano tras compilar; ver CLAUDE.md)
+frontend/public/app/*.apk

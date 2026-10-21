@@ -14,6 +14,7 @@
       <button class="icon-btn" :class="{ active: ui.queueOpen }" title="Cola" @click="ui.toggleQueue()"><Icon name="queue" /></button>
       <router-link to="/favorites" class="icon-btn" title="Favoritos"><Icon name="favorite" /></router-link>
       <router-link to="/scan" class="icon-btn" title="Escanear"><Icon name="scan" /></router-link>
+      <a v-if="!isNative" class="icon-btn" href="/app/spoticlone.apk" download title="Descargar la app para Android"><Icon name="download" /></a>
       <button class="icon-btn" title="Cerrar sesión" @click="logout"><Icon name="logout" /></button>
     </header>
 
@@ -35,6 +36,7 @@
         <router-link to="/scan" class="nav-item"><Icon name="scan" /> Escanear</router-link>
       </nav>
       <div style="flex:1"></div>
+      <a v-if="!isNative" class="btn-ghost" style="margin-bottom:8px;" href="/app/spoticlone.apk" download><Icon name="download" :size="16" /> App Android</a>
       <button class="btn-ghost" @click="logout"><Icon name="logout" :size="16" /> Cerrar sesión</button>
     </aside>
 
@@ -63,6 +65,7 @@
 <script setup>
 import { watch, onUnmounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
+import { Capacitor } from '@capacitor/core';
 import { useAuthStore } from '@/store/auth';
 import { useUiStore } from '@/store/ui';
 import { useSoulseekStore } from '@/store/soulseek';
@@ -76,6 +79,8 @@ const router = useRouter();
 const auth = useAuthStore();
 const ui = useUiStore();
 const soulseek = useSoulseekStore();
+// Dentro de la APK no se ofrece descargarla
+const isNative = Capacitor.isNativePlatform();
 
 async function logout() {
   await auth.logout();   // el watcher de abajo para el sondeo al caer isAuthenticated
